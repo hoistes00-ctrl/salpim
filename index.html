@@ -167,6 +167,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </ol>
   </div>
   <div class="card errbox" id="envWarn" hidden></div>
+  <p class="hint" id="verNote" style="text-align:center"></p>
 </section>
 
 <!-- ============ 카메라 ============ -->
@@ -241,6 +242,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     <button class="ghost small" id="alertClose">확인</button>
   </div>
   </div><div class="split-side">
+  <p class="hint err" id="verWarn" hidden style="margin:10px 14px 0"></p>
   <div class="ctrls">
     <button id="talkBtn" disabled>🎙️ 누르고 있는 동안 말하기</button>
     <button id="listenBtn" class="on"><span class="ic">🔊</span>소리 듣기</button>
@@ -300,7 +302,10 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
+const APP_VER = '2026.11.09-4';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
 const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid' };
+// 민감도(1~10) → 화면에서 바뀐 부분의 비율 기준. 1: 15%, 5: 약 3%, 10: 약 0.5%
+const motionThr = s => 0.15 * Math.pow(0.68, (s || 5) - 1);
 const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => ALPHA[b % ALPHA.length]).join('');
 const cleanCode = s => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 const pad = n => String(n).padStart(2, '0');
@@ -396,6 +401,7 @@ function renderDiag(box, d, errName, onRetry) {
 
 /* ---------- 홈 ---------- */
 (function home() {
+  $('#verNote').textContent = '버전 ' + APP_VER;
   if (BAD_ORIGIN || inAppBrowser() || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     diagnoseMedia(null).then(d => renderDiag($('#envWarn'), d, ''));
   } else if (typeof Peer === 'undefined') {
@@ -524,6 +530,7 @@ const Cam = {
       $('#camVideo').srcObject = this.stream;
       this.replaceTracks();
     } catch { this.recoverCamera(); }
+    this.resetBg?.();   // 카메라를 바꿀 때 생기는 화면 변화는 움직임으로 치지 않음
     this.broadcast({ t: 'facing', facing: this.facing });
   },
 
@@ -599,7 +606,7 @@ const Cam = {
     try { v.conn?.close(); } catch {}
     v.conn = conn;
     conn.on('open', () => {
-      conn.send({ t: 'hello', cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing });
+      conn.send({ t: 'hello', ver: APP_VER, cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing });
       this.sendStatus();
     });
     conn.on('data', d => this.onMsg(d, conn));
@@ -633,7 +640,7 @@ const Cam = {
       this.updateTalk();
     } else if (d.t === 'iam') {
       const v = this.viewers.get(conn.peer);
-      if (v) { v.name = String(d.name || '').slice(0, 12); this.refreshStatus(); }
+      if (v) { v.name = String(d.name || '').slice(0, 12); v.ver = String(d.ver || ''); this.refreshStatus(); }
     }
   },
 
@@ -656,38 +663,42 @@ const Cam = {
     $('#statViewers').textContent = n;
     $('#dimLive').textContent = n ? '보는 중 ' + n : '대기';
     if (!this.peer?.open) return;
-    const names = [...this.viewers.values()].filter(v => v.call).map(v => v.name || '기기');
+    const live = [...this.viewers.values()].filter(v => v.call);
+    const names = live.map(v => (v.name || '기기') + (v.ver && v.ver !== APP_VER ? '(예전 버전)' : ''));
     setStatus($('#camDot'), $('#camStatus'), n ? 'ok' : 'wait', n ? `작동 중 · ${names.join(', ')}에서 보는 중` : '작동 중 · 뷰어를 기다리는 중');
   },
 
   /* ---- 감지 ---- */
+  // 움직임 감지: 직전 프레임이 아니라 "천천히 따라오는 배경"과 비교한다.
+  // → 손 흔들기처럼 계속되는 움직임뿐 아니라, 화면 전환·불 켜짐·문 열림처럼
+  //   한 번에 확 바뀌고 멈추는 변화도 잡힌다.
   startDetect() {
-    const W = 64, H = 48, c = document.createElement('canvas'); c.width = W; c.height = H;
+    const W = 80, H = 60, N = W * H, c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d', { willReadFrequently: true });
-    let prev = null, streak = 0;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';   // 축소할 때 평균을 내서 노이즈를 줄임
+    let bg = null, streak = 0;
     const video = $('#camVideo');
+    this.resetBg = () => { bg = null; streak = 0; };
     this.timers.push(setInterval(() => {
-      if (video.readyState < 2) { prev = null; return; }
+      if (video.readyState < 2 || !video.videoWidth) { bg = null; return; }
       ctx.drawImage(video, 0, 0, W, H);
-      const d = ctx.getImageData(0, 0, W, H).data, cur = new Uint8Array(W * H);
-      for (let i = 0, j = 0; i < cur.length; i++, j += 4) cur[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
-      if (prev) {
-        let changed = 0;
-        for (let i = 0; i < cur.length; i++) if (Math.abs(cur[i] - prev[i]) > 28) changed++;
-        const ratio = changed / cur.length;
-        this.level.motion = ratio;
-        const thr = 0.25 * Math.pow(0.7, this.cfg.motionSens - 1);   // 1 → 25%, 10 → 1%
-        streak = ratio > thr ? streak + 1 : 0;
-        if (this.cfg.motion && streak >= 2) { streak = 0; this.fire('motion', ratio); }
-      }
-      prev = cur;
-    }, 400));
+      const d = ctx.getImageData(0, 0, W, H).data, cur = new Float32Array(N);
+      for (let i = 0, j = 0; i < N; i++, j += 4) cur[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) / 256;
+      if (!bg) { bg = cur; return; }
+      let changed = 0;
+      for (let i = 0; i < N; i++) if (Math.abs(cur[i] - bg[i]) > 18) changed++;
+      const ratio = changed / N;
+      this.level.motion = ratio;
+      streak = ratio > motionThr(this.cfg.motionSens) ? streak + 1 : 0;
+      if (this.cfg.motion && streak >= 2) { streak = 0; this.fire('motion'); }
+      for (let i = 0; i < N; i++) bg[i] += (cur[i] - bg[i]) * 0.15;   // 약 2~3초면 새 장면에 적응
+    }, 300));
   },
 
   // 감지되면 시각만 기록하고 알린다. 사진은 찍거나 저장하지 않는다.
   fire(kind) {
     const now = Date.now();
-    if (now - (this.lastFire[kind] || 0) < 20000) return;   // 20초에 한 번
+    if (now - (this.lastFire[kind] || 0) < 10000) return;   // 알림은 10초에 한 번까지
     this.lastFire[kind] = now;
     const ev = { kind, ts: now };
     this.events.unshift(ev); this.events = this.events.slice(0, 20);
@@ -827,7 +838,7 @@ const View = {
     const conn = this.peer.connect(target, { reliable: true });
     this.conn = conn;
     conn.on('data', d => this.onMsg(d));
-    conn.on('open', () => { this.lastMsg = Date.now(); try { conn.send({ t: 'iam', name: DEVICE_NAME }); } catch {} });
+    conn.on('open', () => { this.lastMsg = Date.now(); try { conn.send({ t: 'iam', name: DEVICE_NAME, ver: APP_VER }); } catch {} });
     this.lastMsg = Date.now();
   },
 
@@ -877,12 +888,15 @@ const View = {
       this.events = Array.isArray(d.events) ? d.events.filter(e => e?.kind === 'motion').map(e => ({ kind: e.kind, ts: e.ts })) : [];
       renderEvents($('#viewEvents'), this.events);
       if (d.cfg) { this.cfg = { ...DEFAULT_CFG, ...d.cfg }; this.fillSettings(); }
+      const old = d.ver !== APP_VER;
+      $('#verWarn').hidden = !old;
+      if (old) $('#verWarn').textContent = '⚠️ 카메라 기기에 예전 버전이 열려 있습니다. 카메라 기기에서 종료 후 페이지를 새로고침하세요. (이 기기 ' + APP_VER + ')';
     } else if (d.t === 'cfg' && d.cfg) {
       this.cfg = { ...DEFAULT_CFG, ...d.cfg }; this.fillSettings();
       $('#cfgSync').textContent = '· 카메라에 적용됨';
       setTimeout(() => { $('#cfgSync').textContent = ''; }, 2000);
     } else if (d.t === 'lv' && typeof d.m === 'number') {
-      const mThr = 0.25 * Math.pow(0.7, this.cfg.motionSens - 1);
+      const mThr = motionThr(this.cfg.motionSens);
       $('#mMotion').style.width = Math.min(100, d.m / mThr * 60) + '%'; $('#mMotion').classList.toggle('hot', d.m > mThr);
     } else if (d.t === 'status') {
       const b = d.battery;
@@ -904,14 +918,19 @@ const View = {
     if (this.swReg && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
       this.swReg.showNotification('살핌 · ' + (KIND[ev.kind] || '감지'), {
         body: hhmmss(ev.ts) + ' 탭해서 확인', tag: 'salpim-' + ev.kind, renotify: true,
-        silent: this.local.alertMode === 'vibe', vibrate: [250, 120, 250],
+        vibrate: [400, 150, 400, 150, 400],
       }).catch(() => {});
     }
   },
 
   signal() {   // 선택한 방식으로 한 번 알림
-    if (this.local.alertMode === 'beep') this.beep();
-    else navigator.vibrate?.([250, 120, 250, 120, 250]);
+    if (this.local.alertMode === 'beep') { this.beep(); return; }
+    let ok = false;
+    try { ok = navigator.vibrate?.([400, 150, 400, 150, 400]) === true; } catch {}
+    if (!ok) {   // 브라우저가 진동을 거부하면 조용히 넘어가지 않고 알림음으로 대신
+      this.beep();
+      if (!this.vibeBlocked) { this.vibeBlocked = true; this.fillSettings(); }
+    }
   },
 
   beep() {
@@ -964,8 +983,10 @@ const View = {
     $('#cKeepOn').checked = this.local.keepOn;
     if (this.local.alertMode !== 'beep') this.local.alertMode = 'vibe';
     for (const b of document.querySelectorAll('#modeSeg button')) b.classList.toggle('on', b.dataset.m === this.local.alertMode);
-    const noVibe = !('vibrate' in navigator) || IS_BIG;
-    $('#modeHint').textContent = this.local.alertMode === 'vibe' && noVibe ? '· 이 기기는 진동이 없을 수 있어요' : '';
+    const isVibe = this.local.alertMode === 'vibe';
+    $('#modeHint').textContent = !isVibe ? ''
+      : this.vibeBlocked || !('vibrate' in navigator) ? '· 이 브라우저가 진동을 막아 알림음으로 대신 울립니다'
+      : IS_BIG ? '· 탭은 진동 장치가 없는 경우가 많아요' : '';
     for (const b of document.querySelectorAll('#qSeg button')) b.classList.toggle('on', b.dataset.q === this.cfg.quality);
   },
 
