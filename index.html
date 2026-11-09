@@ -88,6 +88,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .seg{display:flex;background:var(--panel2);border-radius:10px;padding:3px}
 .seg button{flex:1;padding:8px;background:transparent;border-radius:8px;font-size:13px}
 .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.soundgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.soundgrid button{padding:10px 4px;font-size:13px}
+.soundgrid button.on{background:var(--accent);color:var(--accent-ink);font-weight:700}
 
 /* events */
 .evs{list-style:none;margin:0;padding:0}
@@ -243,6 +246,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </div>
   </div><div class="split-side">
   <p class="hint err" id="verWarn" hidden style="margin:10px 14px 0"></p>
+  <p class="hint" id="howlNote" hidden style="margin:10px 14px 0;color:var(--warn)"></p>
   <div class="ctrls">
     <button id="talkBtn" disabled>🎙️ 누르고 있는 동안 말하기</button>
     <button id="listenBtn" class="on"><span class="ic">🔊</span>소리 듣기</button>
@@ -261,8 +265,23 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div class="set"><label for="cMotion">움직임 감지</label><input type="checkbox" class="switch" id="cMotion"></div>
       <div class="slider"><input type="range" id="cMotionSens" min="1" max="10" step="1"><div class="row"><span class="grow">둔감</span><span>민감</span></div></div>
       <div class="set" style="display:block">
+        <div style="margin-bottom:6px">다시 알림 간격 <span class="hint">계속 움직이면 이 간격으로 반복</span></div>
+        <div class="seg" id="gapSeg"><button data-g="1">1초</button><button data-g="3">3초</button><button data-g="10">10초</button><button data-g="30">30초</button><button data-g="60">1분</button></div>
+      </div>
+      <div class="set" style="display:block">
         <div style="margin-bottom:6px">이 기기의 알림 방식 <span class="hint" id="modeHint"></span></div>
         <div class="seg" id="modeSeg"><button data-m="vibe">📳 진동</button><button data-m="beep">🔔 알림음</button></div>
+        <button class="ghost" id="vibeTest" style="width:100%;margin-top:8px">📳 진동 시험해 보기</button>
+        <p class="hint" id="vibeResult" hidden style="margin:6px 0 0"></p>
+        <div id="soundPick" hidden>
+          <div class="hint" style="margin:10px 0 6px">알림음 고르기 · 누르면 미리 들려줍니다</div>
+          <div class="soundgrid" id="soundGrid"></div>
+          <div class="slider" style="padding:10px 0 0"><input type="range" id="cVol" min="1" max="10" step="1"><div class="row"><span class="grow">작게</span><span>크게</span></div></div>
+        </div>
+      </div>
+      <div class="set" style="display:block">
+        <div>듣기 소리 크기 <span class="hint">삐— 소리가 나면 기기를 떨어뜨리거나 줄이세요</span></div>
+        <div class="slider" style="padding:6px 0 0"><input type="range" id="cListenVol" min="1" max="10" step="1"><div class="row"><span class="grow">작게</span><span>크게</span></div></div>
       </div>
       <div class="set"><label for="cKeepOn">이 기기 화면 켜두기<br><span class="hint">거치해 둔 탭에 추천</span></label><input type="checkbox" class="switch" id="cKeepOn"></div>
       <div class="set" style="display:block">
@@ -302,8 +321,38 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.09-4';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
-const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid' };
+const APP_VER = '2026.11.09-7';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3 };
+const GAPS = [1, 3, 10, 30, 60];   // 다시 알림 간격(초). 1초 = 계속 움직이는 동안 1초마다
+const vibePattern = gap => gap <= 1 ? [300, 100, 300] : [400, 150, 400, 150, 400];   // 1초 간격이면 진동도 짧게
+
+/* ---------- 알림음 (기기 안에서 합성 · 파일 없음) ---------- */
+function tone(ac, out, t, f, dur, { type = 'sine', vol = 0.3, f2 = 0, hold = false } = {}) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.linearRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  if (hold) g.gain.setValueAtTime(vol, t + dur - 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
+}
+const SOUNDS = {
+  chime:   { label: '🔔 딩동',   play: (ac, o, t) => { tone(ac, o, t, 880, 0.45); tone(ac, o, t + 0.28, 1175, 0.7); } },
+  bell:    { label: '🛎️ 종소리', play: (ac, o, t) => { for (const s of [0, 0.7]) { tone(ac, o, t + s, 1318, 1.1, { vol: 0.3 }); tone(ac, o, t + s, 2637, 0.5, { vol: 0.08 }); tone(ac, o, t + s, 3951, 0.25, { vol: 0.04 }); } } },
+  marimba: { label: '🎵 마림바', play: (ac, o, t) => { [523, 659, 784, 1047].forEach((f, i) => tone(ac, o, t + i * 0.13, f, 0.35, { type: 'triangle', vol: 0.45 })); } },
+  bird:    { label: '🐦 짹짹',   play: (ac, o, t) => { for (const s of [0, 0.16, 0.5, 0.66]) tone(ac, o, t + s, 2600, 0.1, { f2: 3600, vol: 0.25 }); } },
+  beep:    { label: '📟 삐삐삐', play: (ac, o, t) => { for (const s of [0, 0.22, 0.44]) tone(ac, o, t + s, 1000, 0.13, { type: 'square', vol: 0.12, hold: true }); } },
+  siren:   { label: '🚨 경보',   play: (ac, o, t) => { for (const s of [0, 0.55]) tone(ac, o, t + s, 650, 0.5, { type: 'sawtooth', f2: 1300, vol: 0.12, hold: true }); } },
+};
+function playSound(ac, name, vol10) {
+  if (!ac) return;
+  ac.resume?.();
+  const master = ac.createGain();
+  master.gain.value = Math.pow((vol10 || 7) / 10, 1.5) * 1.6;   // 1~10 → 작게~크게
+  master.connect(ac.destination);
+  (SOUNDS[name] || SOUNDS.chime).play(ac, master, ac.currentTime + 0.02);
+}
 // 민감도(1~10) → 화면에서 바뀐 부분의 비율 기준. 1: 15%, 5: 약 3%, 10: 약 0.5%
 const motionThr = s => 0.15 * Math.pow(0.68, (s || 5) - 1);
 const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => ALPHA[b % ALPHA.length]).join('');
@@ -629,6 +678,7 @@ const Cam = {
       const c = d.cfg, n = {};
       if (typeof c.motion === 'boolean') n.motion = c.motion;
       if (c.motionSens >= 1 && c.motionSens <= 10) n.motionSens = Math.round(c.motionSens);
+      if (GAPS.includes(c.gap)) n.gap = c.gap;
       const qChanged = c.quality && c.quality !== this.cfg.quality;
       Object.assign(this.cfg, n);
       if (qChanged) this.setQuality(c.quality);
@@ -676,29 +726,38 @@ const Cam = {
     const W = 80, H = 60, N = W * H, c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';   // 축소할 때 평균을 내서 노이즈를 줄임
-    let bg = null, streak = 0;
+    let bg = null, prev = null, streak = 0;
     const video = $('#camVideo');
-    this.resetBg = () => { bg = null; streak = 0; };
+    this.resetBg = () => { bg = null; prev = null; streak = 0; };
     this.timers.push(setInterval(() => {
       if (video.readyState < 2 || !video.videoWidth) { bg = null; return; }
       ctx.drawImage(video, 0, 0, W, H);
       const d = ctx.getImageData(0, 0, W, H).data, cur = new Float32Array(N);
       for (let i = 0, j = 0; i < N; i++, j += 4) cur[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) / 256;
-      if (!bg) { bg = cur; return; }
-      let changed = 0;
-      for (let i = 0; i < N; i++) if (Math.abs(cur[i] - bg[i]) > 18) changed++;
-      const ratio = changed / N;
+      if (!bg) { bg = Float32Array.from(cur); prev = cur; return; }
+      let changed = 0, moving = 0;
+      for (let i = 0; i < N; i++) {
+        if (Math.abs(cur[i] - bg[i]) > 18) changed++;     // 배경과 다름 (새 변화)
+        if (Math.abs(cur[i] - prev[i]) > 18) moving++;    // 직전 화면과도 다름 (지금 움직이는 중)
+      }
+      prev = cur;
+      const ratio = changed / N, live = moving / N, thr = motionThr(this.cfg.motionSens);
       this.level.motion = ratio;
-      streak = ratio > motionThr(this.cfg.motionSens) ? streak + 1 : 0;
-      if (this.cfg.motion && streak >= 2) { streak = 0; this.fire('motion'); }
-      for (let i = 0; i < N; i++) bg[i] += (cur[i] - bg[i]) * 0.15;   // 약 2~3초면 새 장면에 적응
-    }, 300));
+      streak = ratio > thr ? streak + 1 : 0;
+      if (this.cfg.motion && streak >= 2) {
+        // 처음 감지는 바로 알리고, 반복 알림은 실제로 계속 움직일 때만 (화면이 한 번 바뀐 것만으로 여러 번 울리지 않게)
+        const fresh = Date.now() - (this.lastFire.motion || 0) > 2500;
+        if (fresh || live > thr * 0.5) this.fire('motion');
+      }
+      for (let i = 0; i < N; i++) bg[i] += (cur[i] - bg[i]) * 0.15;   // 약 2초면 새 장면에 적응
+    }, 250));
   },
 
   // 감지되면 시각만 기록하고 알린다. 사진은 찍거나 저장하지 않는다.
   fire(kind) {
     const now = Date.now();
-    if (now - (this.lastFire[kind] || 0) < 10000) return;   // 알림은 10초에 한 번까지
+    const gap = (GAPS.includes(this.cfg.gap) ? this.cfg.gap : 3) * 1000;
+    if (now - (this.lastFire[kind] || 0) < gap) return;   // "다시 알림" 간격 안에서는 한 번만
     this.lastFire[kind] = now;
     const ev = { kind, ts: now };
     this.events.unshift(ev); this.events = this.events.slice(0, 20);
@@ -763,8 +822,13 @@ $('#shareLink').onclick = async () => {
 const View = {
   peer: null, call: null, conn: null, code: '', mic: null, micTrack: null, running: false,
   retryTimer: null, lastMsg: 0, events: [], cfg: { ...DEFAULT_CFG }, cfgTimer: null,
-  // 알림 방식: 탭은 진동이 없는 경우가 많아 기본값을 알림음으로
-  local: { alertMode: IS_BIG ? 'beep' : 'vibe', keepOn: IS_BIG, ...store.get('viewLocal', {}) }, audioCtx: null, swReg: null,
+  // 알림 방식 기본값은 모든 기기에서 진동. 사용자가 직접 고른 적이 있을 때만(modeChosen) 저장값을 따른다
+  // (예전 버전은 탭에 '알림음'을 기본으로 저장해 두었기 때문)
+  local: (() => {
+    const l = { alertMode: 'vibe', keepOn: IS_BIG, listen: true, listenVol: 8, ...store.get('viewLocal', {}) };
+    if (!l.modeChosen) l.alertMode = 'vibe';
+    return l;
+  })(), audioCtx: null, swReg: null,
   isLive: false, viewerCount: 1, wake: null,
 
   async start(code) {
@@ -774,6 +838,7 @@ const View = {
     try { this.audioCtx = new AudioContext(); } catch {}
     await this.prepareMic();
     this.bindSettings();
+    this.applyListen();
     this.applyKeepOn();
     this.registerSW();
     this.connectPeer();
@@ -845,7 +910,8 @@ const View = {
   onStream(rs) {
     const v = $('#viewVideo');
     v.srcObject = rs;
-    v.muted = !$('#listenBtn').classList.contains('on');
+    this.applyListen();
+    this.watchHowl(rs);
     v.play().then(() => { $('#playOver').hidden = true; }).catch(() => { $('#playOver').hidden = false; });
     this.markLive();
   },
@@ -911,40 +977,45 @@ const View = {
   },
 
   alert(ev) {
-    $('#alertTitle').textContent = KIND[ev.kind] || '감지';
-    $('#alertTime').textContent = hhmmss(ev.ts);
-    $('#alertBox').hidden = false;
+    // 알림이 떠 있는 동안 또 감지되면 횟수를 올리고 다시 울린다 (확인을 누르면 초기화)
+    const box = $('#alertBox');
+    this.alertCount = box.hidden ? 1 : (this.alertCount || 1) + 1;
+    $('#alertTitle').textContent = (KIND[ev.kind] || '감지') + (this.alertCount > 1 ? ` · ${this.alertCount}번째` : '');
+    $('#alertTime').textContent = (this.alertCount > 1 ? '마지막 ' : '') + hhmmss(ev.ts);
+    box.hidden = false;
+    box.style.animation = 'none'; void box.offsetHeight; box.style.animation = '';   // 깜빡임 다시
     this.signal();
     if (this.swReg && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
       this.swReg.showNotification('살핌 · ' + (KIND[ev.kind] || '감지'), {
         body: hhmmss(ev.ts) + ' 탭해서 확인', tag: 'salpim-' + ev.kind, renotify: true,
-        vibrate: [400, 150, 400, 150, 400],
+        vibrate: vibePattern(this.cfg.gap),
       }).catch(() => {});
     }
   },
 
-  signal() {   // 선택한 방식으로 한 번 알림
-    if (this.local.alertMode === 'beep') { this.beep(); return; }
+  signal() {   // 선택한 방식으로 한 번 알림. 진동이면 브라우저가 받아들였는지(true/false)를 돌려준다
+    if (this.local.alertMode === 'beep') { this.beep(); return true; }
     let ok = false;
-    try { ok = navigator.vibrate?.([400, 150, 400, 150, 400]) === true; } catch {}
+    try { ok = navigator.vibrate?.(vibePattern(this.cfg.gap)) === true; } catch {}
     if (!ok) {   // 브라우저가 진동을 거부하면 조용히 넘어가지 않고 알림음으로 대신
       this.beep();
       if (!this.vibeBlocked) { this.vibeBlocked = true; this.fillSettings(); }
-    }
+    } else if (this.vibeBlocked) { this.vibeBlocked = false; this.fillSettings(); }
+    return ok;
   },
 
-  beep() {
-    const ac = this.audioCtx; if (!ac) return;
-    ac.resume?.();
-    const t = ac.currentTime;
-    for (const [i, f] of [[0, 880], [0.22, 1175]]) {
-      const o = ac.createOscillator(), g = ac.createGain();
-      o.frequency.value = f; o.connect(g); g.connect(ac.destination);
-      g.gain.setValueAtTime(0.0001, t + i); g.gain.exponentialRampToValueAtTime(0.25, t + i + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + i + 0.18);
-      o.start(t + i); o.stop(t + i + 0.2);
-    }
+  testVibe() {   // '진동 시험' 버튼
+    const prev = this.local.alertMode;
+    this.local.alertMode = 'vibe';
+    const ok = this.signal();
+    this.local.alertMode = prev;
+    $('#vibeResult').hidden = false;
+    $('#vibeResult').textContent = ok
+      ? '✓ 브라우저가 진동을 보냈습니다. 그런데도 진동이 없다면 이 기기가 무음 모드이거나(크롬은 무음 모드에서 진동하지 않습니다), 진동 세기가 0으로 되어 있는지 확인하세요.'
+      : '✕ 브라우저가 진동을 막았습니다. 화면을 한 번 터치한 뒤 다시 눌러 보세요. 계속 막히면 알림음을 쓰세요.';
   },
+
+  beep() { playSound(this.audioCtx, this.local.sound, this.local.vol); },
 
   async registerSW() {
     if (!('serviceWorker' in navigator) || !('Notification' in window)) { $('#notiBtn').hidden = true; return; }
@@ -970,11 +1041,22 @@ const View = {
     $('#cMotion').onchange = e => { this.cfg.motion = e.target.checked; send(); };
     $('#cMotionSens').oninput = e => { this.cfg.motionSens = +e.target.value; send(); };
     for (const b of document.querySelectorAll('#modeSeg button')) b.onclick = () => {
-      this.local.alertMode = b.dataset.m; store.set('viewLocal', this.local);
+      this.local.alertMode = b.dataset.m; this.local.modeChosen = true; store.set('viewLocal', this.local);
       this.fillSettings(); this.signal();   // 고르면 한 번 미리 울려 확인
     };
     $('#cKeepOn').onchange = e => { this.local.keepOn = e.target.checked; store.set('viewLocal', this.local); this.applyKeepOn(); };
     for (const b of document.querySelectorAll('#qSeg button')) b.onclick = () => { this.cfg.quality = b.dataset.q; this.fillSettings(); send(); };
+    for (const b of document.querySelectorAll('#gapSeg button')) b.onclick = () => { this.cfg.gap = +b.dataset.g; this.fillSettings(); send(); };
+    const grid = $('#soundGrid');
+    for (const [k, s] of Object.entries(SOUNDS)) {
+      const b = document.createElement('button'); b.dataset.s = k; b.textContent = s.label;
+      b.onclick = () => { this.local.sound = k; store.set('viewLocal', this.local); this.fillSettings(); this.beep(); };
+      grid.append(b);
+    }
+    $('#vibeTest').onclick = () => this.testVibe();
+    $('#cListenVol').oninput = e => { this.local.listenVol = +e.target.value; this.saveLocal(); this.applyListen(); };
+    $('#cVol').oninput = e => { this.local.vol = +e.target.value; store.set('viewLocal', this.local); };
+    $('#cVol').onchange = () => this.beep();   // 손을 떼면 그 크기로 미리 듣기
     this.fillSettings();
   },
   fillSettings() {
@@ -985,9 +1067,18 @@ const View = {
     for (const b of document.querySelectorAll('#modeSeg button')) b.classList.toggle('on', b.dataset.m === this.local.alertMode);
     const isVibe = this.local.alertMode === 'vibe';
     $('#modeHint').textContent = !isVibe ? ''
-      : this.vibeBlocked || !('vibrate' in navigator) ? '· 이 브라우저가 진동을 막아 알림음으로 대신 울립니다'
-      : IS_BIG ? '· 탭은 진동 장치가 없는 경우가 많아요' : '';
+      : this.vibeBlocked || !('vibrate' in navigator) ? '· 이 브라우저가 진동을 막아 알림음으로 대신 울립니다' : '';
+    $('#vibeTest').hidden = !isVibe || !('vibrate' in navigator);
     for (const b of document.querySelectorAll('#qSeg button')) b.classList.toggle('on', b.dataset.q === this.cfg.quality);
+    const gap = GAPS.includes(this.cfg.gap) ? this.cfg.gap : 3;
+    for (const b of document.querySelectorAll('#gapSeg button')) b.classList.toggle('on', +b.dataset.g === gap);
+    if (!SOUNDS[this.local.sound]) this.local.sound = 'chime';
+    if (!(this.local.vol >= 1 && this.local.vol <= 10)) this.local.vol = 7;
+    // 알림음 고르기는 '알림음' 모드이거나, 진동이 막혀 알림음으로 대신 울리는 경우에 보여준다
+    $('#soundPick').hidden = isVibe && !(this.vibeBlocked || !('vibrate' in navigator));
+    for (const b of document.querySelectorAll('#soundGrid button')) b.classList.toggle('on', b.dataset.s === this.local.sound);
+    $('#cVol').value = this.local.vol;
+    $('#cListenVol').value = this.local.listenVol || 8;
   },
 
   async applyKeepOn() {
@@ -1008,15 +1099,71 @@ const View = {
     $('#talkBtn').classList.toggle('on', on);
     $('#talkBtn').textContent = on ? '🔴 말하는 중… 손을 떼면 끝' : '🎙️ 누르고 있는 동안 말하기';
     // 하울링 방지: 말하는 동안 카메라 쪽 소리는 잠시 끔
-    const v = $('#viewVideo');
-    if (on) { this._wasMuted = v.muted; v.muted = true; } else v.muted = this._wasMuted ?? false;
+    this.talking = on;
+    this.applyListen();
     if (this.conn?.open) this.conn.send({ t: 'talk', on });
     if (on) navigator.vibrate?.(30);
   },
 
+  /* ---- 소리 듣기 + 하울링 막기 ---- */
+  applyListen() {
+    const v = $('#viewVideo'), on = !!this.local.listen;
+    v.muted = !on || !!this.talking || Date.now() < (this.howlPauseUntil || 0);
+    v.volume = Math.min(1, Math.max(0.05, (this.local.listenVol || 8) / 10));
+    const b = $('#listenBtn');
+    b.classList.toggle('on', on); b.querySelector('.ic').textContent = on ? '🔊' : '🔇';
+  },
+  saveLocal() { store.set('viewLocal', this.local); },
+
+  // 하울링(삐— 하는 날카로운 소리)은 한 음만 유독 크게, 오래 이어지는 특징이 있다.
+  // 들어오는 소리에서 그런 음이 0.8초 넘게 이어지면 소리를 잠깐 끊고 크기를 줄인다.
+  watchHowl(rs) {
+    clearInterval(this.howlTimer);
+    const ac = this.audioCtx, tracks = rs.getAudioTracks();
+    if (!ac || !tracks.length) return;
+    let an;
+    try {
+      const src = ac.createMediaStreamSource(new MediaStream(tracks));
+      an = ac.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0.2;
+      src.connect(an);   // 분석만 하고 스피커로는 보내지 않음 (재생은 영상 쪽에서)
+    } catch { return; }
+    const buf = new Float32Array(an.frequencyBinCount), hz = ac.sampleRate / an.fftSize;
+    const lo = Math.floor(300 / hz), hi = Math.min(buf.length - 1, Math.ceil(6000 / hz));
+    let lastBin = -1, run = 0;
+    this.howlTimer = setInterval(() => {
+      if ($('#viewVideo').muted) { run = 0; return; }   // 이 기기가 소리를 안 내면 하울링 고리도 없음
+      ac.resume?.();
+      an.getFloatFrequencyData(buf);
+      let max = -Infinity, at = -1, sum = 0;
+      for (let i = lo; i <= hi; i++) { const x = buf[i]; sum += x; if (x > max) { max = x; at = i; } }
+      const avg = sum / (hi - lo + 1);
+      const tonal = max > -45 && max - avg > 35;
+      run = tonal && lastBin >= 0 && Math.abs(at - lastBin) <= 1 ? run + 1 : (tonal ? 1 : 0);
+      lastBin = at;
+      if (run >= 8) { run = 0; this.onHowl(Math.round(at * hz)); }
+    }, 100);
+  },
+
+  onHowl(freq) {
+    console.info('howl detected at ~' + freq + 'Hz');
+    const vol = this.local.listenVol || 8, note = $('#howlNote');
+    this.howlPauseUntil = Date.now() + 2000;   // 2초 쉬어서 고리를 끊고
+    if (vol <= 2) {
+      this.local.listen = false;
+      note.textContent = '📢 두 기기가 가까워 삐— 소리(하울링)가 계속 생겨 소리 듣기를 껐습니다. 기기를 다른 방에 두거나 멀리 떨어뜨린 뒤 🔊를 다시 켜세요.';
+    } else {
+      this.local.listenVol = Math.max(2, Math.floor(vol * 0.6));
+      note.textContent = `📢 삐— 소리(하울링)가 생겨 듣기 소리를 ${vol} → ${this.local.listenVol}로 줄였습니다. 카메라 기기와 거리를 두면 다시 키워도 됩니다.`;
+    }
+    note.hidden = false;
+    clearTimeout(this.howlNoteTimer); this.howlNoteTimer = setTimeout(() => { note.hidden = true; }, 15000);
+    this.saveLocal(); this.fillSettings(); this.applyListen();
+    setTimeout(() => this.applyListen(), 2100);   // 줄인 크기로 다시 듣기
+  },
+
   stop() {
     this.running = false;
-    clearInterval(this.watchdog); clearTimeout(this.retryTimer); this.retryTimer = null;
+    clearInterval(this.watchdog); clearInterval(this.howlTimer); clearTimeout(this.retryTimer); this.retryTimer = null;
     try { this.call?.close(); } catch {} try { this.conn?.close(); } catch {}
     try { this.peer?.destroy(); } catch {}
     this.mic?.getTracks().forEach(t => t.stop());
@@ -1029,11 +1176,12 @@ const View = {
 
 $('#viewStop').onclick = () => View.stop();
 $('#playBtn').onclick = () => { $('#viewVideo').play().then(() => { $('#playOver').hidden = true; }).catch(() => {}); };
-$('#alertClose').onclick = () => { $('#alertBox').hidden = true; };
-$('#listenBtn').onclick = e => {
-  const b = e.currentTarget, on = !b.classList.contains('on');
-  b.classList.toggle('on', on); b.querySelector('.ic').textContent = on ? '🔊' : '🔇';
-  $('#viewVideo').muted = !on; View._wasMuted = !on;
+$('#alertClose').onclick = () => { $('#alertBox').hidden = true; View.alertCount = 0; };
+$('#listenBtn').onclick = () => {
+  View.local.listen = !View.local.listen;
+  if (View.local.listen && (View.local.listenVol || 0) < 2) View.local.listenVol = 4;
+  $('#howlNote').hidden = true;
+  View.saveLocal(); View.fillSettings(); View.applyListen();
 };
 $('#flipBtn').onclick = () => { if (View.conn?.open) View.conn.send({ t: 'flip' }); };
 $('#brightBtn').onclick = e => { e.currentTarget.classList.toggle('on', $('#stage').classList.toggle('bright')); };
