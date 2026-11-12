@@ -17,7 +17,13 @@ var SALPIM_SITE = 'https://hoistes00-ctrl.github.io/salpim/';
   if (local) { try { location.replace(SALPIM_SITE + (location.hash || '')); } catch (e) {} }
 })();
 </script>
-<link rel="icon" href="data:,">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="살핌">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <style>
 :root{
@@ -84,6 +90,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .ctrls button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 6px;font-size:13px}
 .ctrls button .ic{font-size:20px;line-height:1.1}
 .ctrls button.on{background:var(--accent);color:var(--accent-ink)}
+button{-webkit-touch-callout:none}
 #talkBtn{grid-column:1/-1;flex-direction:row;justify-content:center;gap:10px;padding:16px;font-size:16px;font-weight:700}
 #talkBtn.on{background:var(--bad);color:#fff}
 
@@ -178,7 +185,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     <ol class="small" style="margin:0;padding-left:18px;color:var(--muted)">
       <li>폴드에서 이 페이지를 열고 <b>카메라로</b>를 누르세요.</li>
       <li>화면의 코드를 플립이나 탭에 입력하거나, <b>링크 보내기</b>로 전달하세요.</li>
-      <li>모든 기기에서 크롬으로 열고, 카메라·마이크 권한을 허용하세요.</li>
+      <li>안드로이드는 크롬, 아이폰·아이패드는 사파리로 열고 카메라·마이크 권한을 허용하세요.</li>
+      <li id="iosTip" hidden>아이폰·아이패드: 사파리 아래 <b>공유 버튼(□↑) → 홈 화면에 추가</b>를 한 뒤 홈 화면 아이콘으로 열면 휴대폰 알림도 받을 수 있습니다.</li>
     </ol>
   </div>
   <div class="card errbox" id="envWarn" hidden></div>
@@ -249,7 +257,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </div>
   <div class="split"><div class="split-main">
   <div class="stage" id="stage">
-    <video id="viewVideo" autoplay playsinline></video>
+    <video id="viewVideo" autoplay playsinline autopictureinpicture></video>
     <div class="badges">
       <span class="badge">🏃 <span class="meter"><i id="mMotion"></i></span></span>
     </div>
@@ -262,6 +270,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </div><div class="split-side">
   <p class="hint err" id="verWarn" hidden style="margin:10px 14px 0"></p>
   <p class="hint" id="howlNote" hidden style="margin:10px 14px 0;color:var(--warn)"></p>
+  <p class="hint err" id="camAway" hidden style="margin:10px 14px 0">⚠️ 카메라 기기에서 다른 화면으로 넘어가 감시가 멈췄습니다. 카메라 기기에서 이 앱 화면으로 돌아가 주세요.</p>
   <p class="hint" id="camMicOff" hidden style="margin:10px 14px 0">🎙️ 카메라 쪽에서 소리 보내기를 꺼 두었습니다. 영상과 움직임 알림은 그대로 옵니다.</p>
   <div class="ctrls">
     <button id="talkBtn" disabled>🎙️ 누르고 있는 동안 말하기</button>
@@ -269,9 +278,16 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     <button id="flipBtn"><span class="ic">🔄</span>카메라 전환</button>
     <button id="brightBtn"><span class="ic">🌙</span>밝게 보기</button>
     <button id="fsBtn"><span class="ic">⛶</span>전체 화면</button>
+    <button id="pipBtn"><span class="ic">⧉</span>작은 화면</button>
     <button id="notiBtn"><span class="ic">🔔</span>알림 켜기</button>
   </div>
   <div class="wrap" style="padding-top:0">
+    <div class="card">
+      <h2>다른 앱을 쓰는 동안에도 지켜보려면</h2>
+      <ul class="evs" id="bgChecks"></ul>
+      <p class="hint" style="margin:8px 0 0">세 가지가 모두 ✓이면 다른 앱을 쓰는 동안에도 움직임 알림이 휴대폰 알림으로 옵니다. 크롬 탭을 닫거나 크롬을 완전히 종료하면 멈춥니다.</p>
+      <p class="hint err" id="pipNote" hidden style="margin:6px 0 0"></p>
+    </div>
     <div class="card">
       <h2>움직임 감지 기록</h2>
       <ul class="evs" id="viewEvents"><li class="empty">아직 없습니다.</li></ul>
@@ -338,7 +354,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.12-4';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const APP_VER = '2026.11.12-6';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
 const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3 };
 const GAPS = [1, 3, 10, 30, 60];   // 다시 알림 간격(초). 1초 = 계속 움직이는 동안 1초마다
 const vibePattern = gap => gap <= 1 ? [300, 100, 300] : [400, 150, 400, 150, 400];   // 1초 간격이면 진동도 짧게
@@ -384,7 +400,14 @@ try {
   if (old.some(e => e.thumb || e.kind !== 'motion')) store.set('camEvents', old.filter(e => e.kind === 'motion').map(e => ({ kind: e.kind, ts: e.ts })));
 } catch {}
 const IS_BIG = Math.min(screen.width, screen.height) >= 600;
-let DEVICE_NAME = IS_BIG ? '태블릿' : '폰';
+// 아이폰·아이패드 (요즘 아이패드 사파리는 자신을 Mac이라고 소개하므로 터치 지원으로 구분)
+const IS_IPAD = /iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const IS_IOS = IS_IPAD || /iPhone|iPod/.test(navigator.userAgent);
+const IS_STANDALONE = (() => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; } })();
+const CAN_VIBRATE = 'vibrate' in navigator;   // 아이폰·아이패드 브라우저는 진동을 지원하지 않음
+let DEVICE_NAME = IS_IOS ? (IS_IPAD ? '아이패드' : '아이폰') : IS_BIG ? '태블릿' : '폰';
+// 아이폰: 무음 스위치를 켜 두면 웹 알림음이 꺼지는데, 'playback'으로 두면 무음 모드에서도 들린다 (사파리 16.4 이상)
+function setAudioSession(type) { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {} }
 (async () => {   // 갤럭시 모델명으로 기기 이름 짐작 (카메라 화면에 "플립, 갤럭시탭에서 보는 중"처럼 표시)
   try {
     const h = await navigator.userAgentData?.getHighEntropyValues(['model']);
@@ -441,7 +464,11 @@ async function diagnoseMedia(e) {
                 '아래 "다시 시도"를 누르세요.'] };
     }
     return { msg: '크롬 앱 자체에 카메라 권한이 없거나, 폰에서 카메라 접근이 막혀 있을 수 있습니다.',
-      steps: ['휴대폰 설정 › 애플리케이션 › Chrome › 권한에서 카메라와 마이크를 "앱 사용 중에만 허용"으로 바꾸세요.',
+      steps: IS_IOS ? [
+              '아이폰·아이패드 설정 › 앱 › Safari(또는 Chrome) › 카메라와 마이크를 "허용"으로 바꾸세요.',
+              '사파리 주소창의 "가가" 또는 ⓘ 버튼 › 웹 사이트 설정에서 카메라·마이크를 "허용"으로 바꾸세요.',
+              '권한을 묻는 창을 그냥 닫았다면 "다시 시도"를 누르고 "허용"을 고르세요.'] : [
+              '휴대폰 설정 › 애플리케이션 › Chrome › 권한에서 카메라와 마이크를 "앱 사용 중에만 허용"으로 바꾸세요.',
               '화면 위에서 아래로 두 번 쓸어 빠른 설정을 열고, 카메라·마이크 접근을 막는 버튼이 켜져 있지 않은지 확인하세요.',
               '권한을 묻는 창을 그냥 닫았다면 "다시 시도"를 누르고 "허용"을 고르세요.'] };
   }
@@ -474,6 +501,7 @@ function renderDiag(box, d, errName, onRetry) {
 /* ---------- 홈 ---------- */
 (function home() {
   $('#verNote').textContent = '버전 ' + APP_VER;
+  $('#iosTip').hidden = !IS_IOS || IS_STANDALONE;
   if (BAD_ORIGIN || inAppBrowser() || !window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     diagnoseMedia(null).then(d => renderDiag($('#envWarn'), d, ''));
   } else if (typeof Peer === 'undefined') {
@@ -728,7 +756,7 @@ const Cam = {
     try { v.conn?.close(); } catch {}
     v.conn = conn;
     conn.on('open', () => {
-      conn.send({ t: 'hello', ver: APP_VER, cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing, mic: this.micOn, name: DEVICE_NAME });
+      conn.send({ t: 'hello', ver: APP_VER, cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing, mic: this.micOn, name: DEVICE_NAME, away: !!this.away });
       this.sendStatus();
     });
     conn.on('data', d => this.onMsg(d, conn));
@@ -901,6 +929,7 @@ const View = {
   local: (() => {
     const l = { alertMode: 'vibe', keepOn: IS_BIG, listen: true, listenVol: 8, ...store.get('viewLocal', {}) };
     if (!l.modeChosen) l.alertMode = 'vibe';
+    if (!CAN_VIBRATE) l.alertMode = 'beep';   // 진동이 없는 브라우저(아이폰·아이패드)는 알림음으로
     return l;
   })(), audioCtx: null, swReg: null,
   isLive: false, viewerCount: 1, wake: null,
@@ -910,6 +939,8 @@ const View = {
     show('view'); this.running = true;
     setStatus($('#viewDot'), $('#viewStatus'), 'wait', '준비 중…');
     try { this.audioCtx = new AudioContext(); } catch {}
+    this.lastSeenTs = store.get('lastSeenTs', 0);
+    setAudioSession('playback');
     this.prepareMic();
     this.bindSettings();
     this.applyListen();
@@ -938,6 +969,7 @@ const View = {
     clearTimeout(this.micIdleTimer);
     try { this.micTrack?.stop(); } catch {}
     this.micTrack = null;
+    if (this.running) setAudioSession('playback');
   },
 
   connectPeer() {
@@ -992,7 +1024,13 @@ const View = {
     v.srcObject = rs;
     this.applyListen();
     this.watchHowl(rs);
-    v.play().then(() => { $('#playOver').hidden = true; }).catch(() => { $('#playOver').hidden = false; });
+    // 아이폰 사파리는 소리가 있는 영상의 자동 재생을 막는다 → 소리 없이 먼저 재생하고 '탭해서 소리 켜기'를 보여줌
+    v.play().then(() => { $('#playOver').hidden = true; }).catch(() => {
+      v.muted = true;
+      v.play().catch(() => {});
+      $('#playBtn').textContent = this.local.listen ? '🔊 탭해서 소리 켜기' : '▶ 탭해서 보기';
+      $('#playOver').hidden = false;
+    });
     this.markLive();
   },
 
@@ -1033,6 +1071,11 @@ const View = {
     if (d.t === 'hello') {
       this.events = Array.isArray(d.events) ? d.events.filter(e => e?.kind === 'motion').map(e => ({ kind: e.kind, ts: e.ts })) : [];
       renderEvents($('#viewEvents'), this.events);
+      // 연결이 끊겼던 사이(다른 앱을 오래 쓰는 동안 등)에 감지된 것이 있으면 알려준다
+      const missed = this.lastSeenTs ? this.events.filter(e => e.ts > this.lastSeenTs) : [];
+      if (missed.length) this.showMissed(missed);
+      this.markSeen();
+      $('#camAway').hidden = !d.away;
       if (d.cfg) { this.cfg = { ...DEFAULT_CFG, ...d.cfg }; this.fillSettings(); }
       if (typeof d.mic === 'boolean') $('#camMicOff').hidden = d.mic;
       if (d.name) this.camName = String(d.name).slice(0, 12);
@@ -1056,7 +1099,74 @@ const View = {
     } else if (d.t === 'event' && d.ev?.kind === 'motion') {
       this.events.unshift({ kind: 'motion', ts: d.ev.ts }); this.events = this.events.slice(0, 30);
       renderEvents($('#viewEvents'), this.events);
+      this.markSeen();
       this.alert(d.ev);
+    } else if (d.t === 'away') {   // 카메라 기기가 앱 화면을 벗어남 → 카메라가 멈춤
+      $('#camAway').hidden = !d.on;
+      if (d.on) {
+        this.signal();
+        this.notify('살핌 · 카메라가 멈췄습니다', '카메라 기기에서 다른 화면으로 넘어갔습니다. 카메라 기기에서 앱으로 돌아가 주세요.', 'salpim-away');
+      }
+    }
+  },
+
+  markSeen() {
+    const t = this.events[0]?.ts || 0;
+    if (t > (this.lastSeenTs || 0)) { this.lastSeenTs = t; store.set('lastSeenTs', t); }
+  },
+  showMissed(list) {
+    const box = $('#alertBox');
+    this.alertCount = list.length;
+    $('#alertTitle').textContent = `🏃 연결이 끊긴 사이 움직임 ${list.length}번`;
+    $('#alertTime').textContent = '마지막 ' + hhmmss(list[0].ts);
+    box.hidden = false;
+  },
+  notify(title, body, tag) {   // 화면에 안 보일 때(다른 앱 사용 중) 휴대폰 알림
+    if (!this.swReg || !('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return false;
+    this.swReg.showNotification(title, { body, tag, renotify: true, vibrate: vibePattern(this.cfg.gap) }).catch(() => {});
+    return true;
+  },
+
+  async togglePip() {
+    const v = $('#viewVideo'), note = $('#pipNote');
+    note.hidden = true;
+    try {
+      if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return; }
+      if (document.pictureInPictureEnabled && v.requestPictureInPicture && v.videoWidth) { await v.requestPictureInPicture(); return; }
+    } catch {}
+    try {   // 아이폰·아이패드 사파리 방식
+      if (v.webkitSupportsPresentationMode?.('picture-in-picture')) {
+        v.webkitSetPresentationMode(v.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+        return;
+      }
+    } catch {}
+    note.textContent = '이 브라우저에서는 작은 화면 버튼이 동작하지 않습니다. 대신 ⛶ 전체 화면으로 본 상태에서 홈 버튼을 누르면 작은 화면으로 바뀝니다.';
+    note.hidden = false;
+  },
+
+  renderBg() {
+    const ul = $('#bgChecks'); if (!ul) return;
+    const noti = 'Notification' in window && Notification.permission === 'granted' && !!this.swReg;
+    const listen = !!this.local.listen;
+    const pip = !!document.pictureInPictureElement;
+    const rows = [
+      [noti, noti ? '휴대폰 알림 허용됨'
+        : IS_IOS && !IS_STANDALONE ? '📲 홈 화면에 추가한 아이콘으로 열어 주세요'
+        : '🔔 알림 켜기를 눌러 주세요',
+        IS_IOS && !IS_STANDALONE ? '아이폰·아이패드는 사파리 공유 버튼 → 홈 화면에 추가 한 앱에서만 알림을 받을 수 있습니다'
+        : '다른 앱을 쓰는 동안 움직임 알림을 받는 통로입니다'],
+      [listen, listen ? '소리 듣기 켜짐' : '🔊 소리 듣기를 켜 두세요', '소리가 재생되는 동안은 크롬이 이 화면을 멈추지 않습니다. 듣기 크기를 작게 해도 됩니다'],
+      [pip || null, pip ? '작은 화면으로 보는 중' : '⧉ 작은 화면 (선택)', '다른 앱 위에 영상을 작게 띄워 둡니다'],
+    ];
+    ul.textContent = '';
+    for (const [ok, title, sub] of rows) {
+      const li = document.createElement('li');
+      const k = document.createElement('span'); k.className = 'k'; k.textContent = ok ? '✓' : ok === null ? '·' : '✕';
+      k.style.color = ok ? 'var(--ok)' : ok === null ? 'var(--muted)' : 'var(--bad)'; k.style.width = '18px';
+      const box = document.createElement('div'); box.className = 'grow';
+      const a = document.createElement('div'); a.textContent = title;
+      const b = document.createElement('div'); b.className = 't'; b.textContent = sub;
+      box.append(a, b); li.append(k, box); ul.append(li);
     }
   },
 
@@ -1069,7 +1179,7 @@ const View = {
     box.hidden = false;
     box.style.animation = 'none'; void box.offsetHeight; box.style.animation = '';   // 깜빡임 다시
     this.signal();
-    if (this.swReg && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+    if (this.swReg && 'Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
       this.swReg.showNotification('살핌 · ' + (KIND[ev.kind] || '감지'), {
         body: hhmmss(ev.ts) + ' 탭해서 확인', tag: 'salpim-' + ev.kind, renotify: true,
         vibrate: vibePattern(this.cfg.gap),
@@ -1114,6 +1224,7 @@ const View = {
     $('#notiBtn').classList.toggle('on', on);
     $('#notiBtn').lastChild.textContent = on ? '알림 켜짐' : '알림 켜기';
     $('#notiBtn').disabled = Notification.permission === 'denied';
+    this.renderBg();
   },
 
   /* ---- 설정 ---- */
@@ -1150,9 +1261,13 @@ const View = {
     $('#cMotionSens').value = this.cfg.motionSens;
     $('#cKeepOn').checked = this.local.keepOn;
     if (!['vibe', 'beep', 'both'].includes(this.local.alertMode)) this.local.alertMode = 'vibe';
-    for (const b of document.querySelectorAll('#modeSeg button')) b.classList.toggle('on', b.dataset.m === this.local.alertMode);
+    for (const b of document.querySelectorAll('#modeSeg button')) {
+      b.classList.toggle('on', b.dataset.m === this.local.alertMode);
+      b.hidden = !CAN_VIBRATE && b.dataset.m !== 'beep';   // 진동이 없는 기기에는 진동 선택지를 숨김
+    }
     const isVibe = this.local.alertMode === 'vibe';
-    $('#modeHint').textContent = !isVibe ? ''
+    $('#modeHint').textContent = !CAN_VIBRATE ? '· 이 브라우저는 진동을 지원하지 않아 알림음으로 알립니다'
+      : !isVibe ? ''
       : this.vibeBlocked || !('vibrate' in navigator) ? '· 이 브라우저가 진동을 막아 알림음으로 대신 울립니다' : '';
     $('#vibeTest').hidden = this.local.alertMode === 'beep' || !('vibrate' in navigator);
     for (const b of document.querySelectorAll('#qSeg button')) b.classList.toggle('on', b.dataset.q === this.cfg.quality);
@@ -1185,6 +1300,7 @@ const View = {
     if (on) {
       clearTimeout(this.micIdleTimer);
       btn.classList.add('on'); btn.textContent = '🎙️ 마이크 켜는 중…';
+      setAudioSession('play-and-record');
       if (!this.micTrack || this.micTrack.readyState === 'ended') {
         try {
           const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
@@ -1222,6 +1338,7 @@ const View = {
     const b = $('#listenBtn');
     b.classList.toggle('on', on); b.querySelector('.ic').textContent = on ? '🔊' : '🔇';
     this.updateMediaSession(on);
+    this.renderBg();
   },
   saveLocal() { store.set('viewLocal', this.local); },
 
@@ -1243,6 +1360,8 @@ const View = {
       };
       navigator.mediaSession.setActionHandler('play', set(true));
       navigator.mediaSession.setActionHandler('pause', set(false));
+      // 지원하는 크롬에서는 다른 앱으로 넘어갈 때 영상이 자동으로 작은 화면이 된다
+      try { navigator.mediaSession.setActionHandler('enterpictureinpicture', () => $('#viewVideo').requestPictureInPicture().catch(() => {})); } catch {}
     } catch {}
   },
 
@@ -1307,7 +1426,11 @@ const View = {
 };
 
 $('#viewStop').onclick = () => View.stop();
-$('#playBtn').onclick = () => { $('#viewVideo').play().then(() => { $('#playOver').hidden = true; }).catch(() => {}); };
+$('#playBtn').onclick = () => {
+  View.audioCtx?.resume?.();
+  View.applyListen();
+  $('#viewVideo').play().then(() => { $('#playOver').hidden = true; }).catch(() => {});
+};
 $('#alertClose').onclick = () => { $('#alertBox').hidden = true; View.alertCount = 0; };
 $('#listenBtn').onclick = () => {
   View.local.listen = !View.local.listen;
@@ -1317,7 +1440,17 @@ $('#listenBtn').onclick = () => {
 };
 $('#flipBtn').onclick = () => { if (View.conn?.open) View.conn.send({ t: 'flip' }); };
 $('#brightBtn').onclick = e => { e.currentTarget.classList.toggle('on', $('#stage').classList.toggle('bright')); };
-$('#fsBtn').onclick = () => { const st = $('#stage'); document.fullscreenElement ? document.exitFullscreen() : st.requestFullscreen?.().catch(() => {}); };
+$('#pipBtn').onclick = () => View.togglePip();
+for (const ev of ['enterpictureinpicture', 'leavepictureinpicture']) $('#viewVideo').addEventListener(ev, () => {
+  $('#pipBtn').classList.toggle('on', !!document.pictureInPictureElement); View.renderBg();
+});
+$('#fsBtn').onclick = () => {
+  const st = $('#stage'), v = $('#viewVideo');
+  if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); return; }
+  if (st.requestFullscreen) st.requestFullscreen().catch(() => {});
+  else if (st.webkitRequestFullscreen) st.webkitRequestFullscreen();   // 아이패드
+  else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();         // 아이폰은 영상만 전체 화면
+};
 $('#notiBtn').onclick = async () => { try { await Notification.requestPermission(); } catch {} View.syncNotiBtn(); };
 // 말하기: 누르고 있는 동안
 (() => {
@@ -1329,7 +1462,13 @@ $('#notiBtn').onclick = async () => { try { await Notification.requestPermission
 
 /* ---------- 화면 복귀 시 점검 ---------- */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') { if (View.running) View.talk(false); return; }
+  if (document.visibilityState !== 'visible') {
+    if (View.running) View.talk(false);
+    // 카메라 기기가 화면을 벗어나면 안드로이드가 카메라를 멈춘다 → 보는 기기에 바로 알림
+    if (Cam.running) { Cam.away = true; Cam.broadcast({ t: 'away', on: true }); }
+    return;
+  }
+  if (Cam.running && Cam.away) { Cam.away = false; Cam.broadcast({ t: 'away', on: false }); }
   if (Cam.running) {
     Cam.keepAwake();
     const vt = Cam.stream?.getVideoTracks()[0];
