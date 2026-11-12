@@ -208,6 +208,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <button class="grow" id="camFlip">🔄 카메라 전환</button>
       </div>
     </div>
+    <div class="card">
+      <div class="set"><label for="camMicSw">🎙️ 소리 보내기 (마이크)<br><span class="hint" id="camMicHint"></span></label><input type="checkbox" class="switch" id="camMicSw"></div>
+    </div>
     <div class="camstats card">
       <div><b id="statViewers">0</b><span>보는 기기</span></div>
       <div><b id="statBatt">–</b><span>배터리</span></div>
@@ -259,6 +262,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </div><div class="split-side">
   <p class="hint err" id="verWarn" hidden style="margin:10px 14px 0"></p>
   <p class="hint" id="howlNote" hidden style="margin:10px 14px 0;color:var(--warn)"></p>
+  <p class="hint" id="camMicOff" hidden style="margin:10px 14px 0">🎙️ 카메라 쪽에서 소리 보내기를 꺼 두었습니다. 영상과 움직임 알림은 그대로 옵니다.</p>
   <div class="ctrls">
     <button id="talkBtn" disabled>🎙️ 누르고 있는 동안 말하기</button>
     <button id="listenBtn" class="on"><span class="ic">🔊</span>소리 듣기</button>
@@ -334,7 +338,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.12-3';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const APP_VER = '2026.11.12-4';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
 const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3 };
 const GAPS = [1, 3, 10, 30, 60];   // 다시 알림 간격(초). 1초 = 계속 움직이는 동안 1초마다
 const vibePattern = gap => gap <= 1 ? [300, 100, 300] : [400, 150, 400, 150, 400];   // 1초 간격이면 진동도 짧게
@@ -499,6 +503,7 @@ const Cam = {
   viewers: new Map(), events: store.get('camEvents', []), cfg: { ...DEFAULT_CFG, ...store.get('cfg', {}) },
   wake: null, running: false, timers: [], lastFire: {},
   level: { motion: 0 }, battery: null, retryTimer: null,
+  micOn: store.get('camMic', true),   // 소리 보내기(마이크) 켜짐/꺼짐 · 이 기기에 기억
 
   async start() {
     this.code = store.get('camCode', '') || newCode();
@@ -540,13 +545,14 @@ const Cam = {
   async openStream() {
     if (BAD_ORIGIN || !navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('getUserMedia unavailable'), { name: 'InsecureContext' });
     const gum = c => navigator.mediaDevices.getUserMedia(c);
-    const audio = { echoCancellation: true, noiseSuppression: false, autoGainControl: true };
+    // 소리 보내기를 꺼 두었으면 마이크는 아예 열지 않는다
+    const audio = this.micOn ? { echoCancellation: true, noiseSuppression: false, autoGainControl: true } : false;
     let s;
     this.noMic = false;
     try { s = await gum({ video: this.videoConstraints(), audio }); }
     catch (e) {
       if (e.name === 'OverconstrainedError') s = await gum({ video: true, audio });
-      else if (e.name === 'NotFoundError' || e.name === 'NotAllowedError') {
+      else if (audio && (e.name === 'NotFoundError' || e.name === 'NotAllowedError')) {
         // 마이크만 막혔거나 없는 경우 → 영상만이라도
         const cam = await permState('camera'), mic = await permState('microphone');
         if (e.name === 'NotFoundError' || cam === 'granted' || (mic === 'denied' && cam !== 'denied')) {
@@ -555,10 +561,58 @@ const Cam = {
         } else throw e;
       } else throw e;
     }
-    $('#camMicNote').hidden = !this.noMic;
+    // 소리 트랙이 없으면 소리 없는 트랙을 넣어 둔다 → 나중에 마이크를 켜면 다시 연결하지 않고 바로 바꿔 끼움
+    if (!s.getAudioTracks().length) { const st = this.silentTrack(); if (st) s.addTrack(st); }
     this.stream = s;
     $('#camVideo').srcObject = s;
     s.getVideoTracks()[0].onended = () => this.recoverCamera();
+    this.renderMic();
+  },
+
+  silentTrack() {
+    if (!this._silent || this._silent.readyState === 'ended') {
+      try {
+        this._silentCtx = this._silentCtx || new AudioContext();
+        this._silent = this._silentCtx.createMediaStreamDestination().stream.getAudioTracks()[0];
+      } catch { return null; }
+    }
+    return this._silent;
+  },
+
+  // 소리 보내기 켜기/끄기: 끄면 마이크를 완전히 놓고(폰의 마이크 사용 표시도 꺼짐) 소리 없는 트랙을 보낸다
+  async setMic(on) {
+    if (this._micBusy) return;
+    this._micBusy = true;
+    this.micOn = on;
+    let next = null;
+    if (on) {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } });
+        next = s.getAudioTracks()[0]; this.noMic = false;
+      } catch { this.noMic = true; this.micOn = false; }
+    }
+    if (!next) next = this.silentTrack();
+    store.set('camMic', this.micOn);
+    const old = this.stream?.getAudioTracks()[0];
+    if (this.stream && next && old !== next) {
+      if (old) this.stream.removeTrack(old);
+      this.stream.addTrack(next);
+      for (const { call } of this.viewers.values()) {
+        const snd = call?.peerConnection?.getSenders().find(x => x.track?.kind === 'audio');
+        snd?.replaceTrack(next).catch(() => {});
+      }
+      if (old && old !== this._silent) old.stop();
+    }
+    this._micBusy = false;
+    this.renderMic(); this.sendStatus();
+  },
+
+  renderMic() {
+    $('#camMicSw').checked = this.micOn;
+    $('#camMicHint').textContent = this.micOn
+      ? '켜짐 · 보는 기기에서 이 방의 소리를 들을 수 있습니다'
+      : '꺼짐 · 마이크를 쓰지 않습니다. 영상과 움직임 감지는 그대로입니다';
+    $('#camMicNote').hidden = !this.noMic;
   },
 
   async recoverCamera() {
@@ -674,7 +728,7 @@ const Cam = {
     try { v.conn?.close(); } catch {}
     v.conn = conn;
     conn.on('open', () => {
-      conn.send({ t: 'hello', ver: APP_VER, cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing });
+      conn.send({ t: 'hello', ver: APP_VER, cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing, mic: this.micOn, name: DEVICE_NAME });
       this.sendStatus();
     });
     conn.on('data', d => this.onMsg(d, conn));
@@ -722,7 +776,7 @@ const Cam = {
 
   sendStatus() {
     const b = this.battery;
-    this.broadcast({ t: 'status', battery: b ? { level: Math.round(b.level * 100), charging: b.charging } : null, viewers: this.liveCount() });
+    this.broadcast({ t: 'status', battery: b ? { level: Math.round(b.level * 100), charging: b.charging } : null, viewers: this.liveCount(), mic: this.micOn, name: DEVICE_NAME });
   },
 
   liveCount() { let n = 0; for (const v of this.viewers.values()) if (v.call) n++; return n; },
@@ -826,6 +880,7 @@ const Cam = {
 
 $('#camStop').onclick = () => { if (confirm('카메라를 끌까요?')) Cam.stop(); };
 $('#camFlip').onclick = () => Cam.flip();
+$('#camMicSw').onchange = e => Cam.setMic(e.target.checked);
 $('#dimBtn').onclick = () => { $('#dim').hidden = false; };
 $('#dim').onclick = () => { $('#dim').hidden = true; Cam.armAutoDim(); };
 for (const ev of ['pointerdown', 'scroll']) $('#cam').addEventListener(ev, () => Cam.running && Cam.armAutoDim(), { passive: true });
@@ -979,6 +1034,8 @@ const View = {
       this.events = Array.isArray(d.events) ? d.events.filter(e => e?.kind === 'motion').map(e => ({ kind: e.kind, ts: e.ts })) : [];
       renderEvents($('#viewEvents'), this.events);
       if (d.cfg) { this.cfg = { ...DEFAULT_CFG, ...d.cfg }; this.fillSettings(); }
+      if (typeof d.mic === 'boolean') $('#camMicOff').hidden = d.mic;
+      if (d.name) this.camName = String(d.name).slice(0, 12);
       const old = d.ver !== APP_VER;
       $('#verWarn').hidden = !old;
       if (old) $('#verWarn').textContent = '⚠️ 카메라 기기에 예전 버전이 열려 있습니다. 카메라 기기에서 종료 후 페이지를 새로고침하세요. (이 기기 ' + APP_VER + ')';
@@ -991,7 +1048,9 @@ const View = {
       $('#mMotion').style.width = Math.min(100, d.m / mThr * 60) + '%'; $('#mMotion').classList.toggle('hot', d.m > mThr);
     } else if (d.t === 'status') {
       const b = d.battery;
-      $('#viewBatt').textContent = b ? `폴드 ${b.level}%${b.charging ? ' ⚡' : ''}` : '';
+      if (typeof d.mic === 'boolean') $('#camMicOff').hidden = d.mic;
+      if (d.name) this.camName = String(d.name).slice(0, 12);
+      $('#viewBatt').textContent = b ? `${this.camName || '카메라'} ${b.level}%${b.charging ? ' ⚡' : ''}` : '';
       if (b && b.level <= 15 && !b.charging) $('#viewBatt').style.color = 'var(--bad)'; else $('#viewBatt').style.color = '';
       if (typeof d.viewers === 'number' && d.viewers !== this.viewerCount) { this.viewerCount = d.viewers; if (this.isLive) this.markLive(); }
     } else if (d.t === 'event' && d.ev?.kind === 'motion') {
