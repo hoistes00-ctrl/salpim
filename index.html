@@ -81,6 +81,40 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .playover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0008}
 .talking{position:absolute;right:10px;top:10px;background:var(--bad);color:#fff;border-radius:999px;padding:3px 10px;font-size:12px}
 
+/* 뷰어: 카메라 여러 대 나눠 보기 */
+.grid{display:grid;gap:2px;background:#000;width:100%;grid-template-columns:1fr}
+.grid.multi{grid-template-columns:1fr 1fr}
+.grid.solo{grid-template-columns:1fr}
+.grid.solo .tile:not(.sel){display:none}
+.tile{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;min-height:0;min-width:0}
+.tile video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+.grid.bright video{filter:brightness(1.9) contrast(1.15) saturate(.9)}
+.grid.multi:not(.solo) .tile.sel{outline:3px solid var(--accent);outline-offset:-3px}
+.tile.alerting{animation:tileflash .6s ease 4}
+@keyframes tileflash{50%{box-shadow:inset 0 0 0 6px var(--bad)}}
+.tbar{position:absolute;left:8px;top:8px;right:84px;display:flex;gap:6px;align-items:center;pointer-events:none;min-width:0}
+.tbar .dot{width:8px;height:8px;box-shadow:none}
+.tname{background:#000a;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;max-width:100%}
+.tbadge{background:#000a;border-radius:999px;padding:2px 8px;font-size:11px;white-space:nowrap;color:#ddd;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}   /* 좁으면 이름보다 배지를 먼저 줄임 */
+.tbadge.low{color:var(--bad)}
+.tbtn{position:absolute;top:6px;padding:4px 9px;font-size:13px;background:#000a;border-radius:8px;color:#eee}
+.texp{right:44px} .tdel{right:6px}
+.tmeter{position:absolute;left:8px;bottom:8px;width:60px;height:5px;background:#ffffff26;border-radius:3px;overflow:hidden;pointer-events:none}
+.tmeter i{display:block;height:100%;width:0;background:var(--ok);transition:width .25s}
+.tmeter i.hot{background:var(--bad)}
+.tover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;background:#000b;font-size:13px;color:#ddd;pointer-events:none;white-space:pre-line}
+.tover.bad{color:#ff9a8f}
+.grid:fullscreen{grid-auto-rows:1fr;align-content:stretch}
+.grid:fullscreen .tile{aspect-ratio:auto}
+.addcam{margin:10px 14px 0;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+input.nameIn{font-size:16px;letter-spacing:0;text-transform:none;padding:10px 12px;margin-top:10px;text-align:center}
+@media (max-width: 599px) and (orientation: portrait) {
+  .grid.n2{grid-template-columns:1fr}   /* 폰 세로 화면에서 2대는 위아래로 */
+  .grid.multi:not(.solo):not(.n2) .tbtn{padding:2px 7px;font-size:12px}
+  .grid.multi:not(.solo):not(.n2) .texp{right:36px}
+  .grid.multi:not(.solo):not(.n2) .tbar{right:66px;left:6px;top:6px}
+}
+
 /* alert */
 .alert{margin:10px 14px 0;padding:12px 14px;border-radius:12px;background:#3a1714;border:1px solid var(--bad);display:flex;gap:10px;align-items:center;animation:pulse 1s ease 3}
 @keyframes pulse{50%{background:#5a1f19}}
@@ -152,6 +186,8 @@ button{-webkit-touch-callout:none}
   .split{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px}
   .split-main{display:flex;flex-direction:column;min-height:0;background:#000}
   .split-main .stage{flex:1;aspect-ratio:auto;min-height:0}
+  .split-main .grid{flex:1;min-height:0;grid-auto-rows:1fr}
+  .split-main .grid .tile{aspect-ratio:auto}
   .split-main .alert{margin:10px}
   .split-side{overflow-y:auto;border-left:1px solid var(--line);overscroll-behavior:contain}
   .split-side .wrap{max-width:none}
@@ -168,15 +204,16 @@ button{-webkit-touch-callout:none}
   <p class="sub">한 기기는 카메라로 두고, 폰이나 탭으로 지켜보세요.</p>
 
   <button class="role" id="pickCam"><b>📷 이 기기를 카메라로</b><span>집에 세워둘 기기 (폴드)</span></button>
-  <button class="role" id="pickView"><b>👀 이 기기로 보기</b><span>지켜볼 기기 (플립·갤럭시탭, 여러 대 동시 가능)</span></button>
+  <button class="role" id="pickView"><b>👀 이 기기로 보기</b><span>지켜볼 기기 (플립·탭·PC · 카메라 여러 대를 나눠서 보기)</span></button>
 
   <div class="card" id="joinCard" hidden>
     <h2>카메라 코드</h2>
     <div class="row">
       <input type="text" id="codeIn" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD2345">
     </div>
-    <p class="hint">카메라 기기 화면에 보이는 8자리 코드를 입력하세요.</p>
+    <p class="hint" id="joinHint">카메라 기기 화면에 보이는 8자리 코드를 입력하세요.</p>
     <button class="primary" id="joinBtn" style="width:100%">연결하기</button>
+    <button class="ghost" id="openSaved" hidden style="width:100%;margin-top:8px"></button>
     <p class="err small" id="joinErr"></p>
   </div>
 
@@ -211,6 +248,7 @@ button{-webkit-touch-callout:none}
     <div class="card">
       <h2>카메라 코드</h2>
       <div class="code" id="camCode">--------</div>
+      <input type="text" class="nameIn" id="camNameIn" maxlength="16" autocomplete="off" placeholder="카메라 이름 (예: 거실, 아기방)">
       <div class="row" style="margin-top:10px">
         <button class="grow" id="shareLink">🔗 링크 보내기</button>
         <button class="grow" id="camFlip">🔄 카메라 전환</button>
@@ -247,31 +285,34 @@ button{-webkit-touch-callout:none}
   </div>
 </section>
 
-<!-- ============ 뷰어 ============ -->
+<!-- ============ 뷰어 (카메라 여러 대를 나눠 보기) ============ -->
 <section id="view" hidden>
   <div class="bar">
     <button class="back ghost" id="viewStop">나가기</button>
     <span class="dot" id="viewDot"></span>
     <span class="status" id="viewStatus">연결 중…</span>
-    <span class="batt" id="viewBatt"></span>
+    <button class="ghost small" id="addCamBtn">＋ 카메라</button>
   </div>
   <div class="split"><div class="split-main">
-  <div class="stage" id="stage">
-    <video id="viewVideo" autoplay playsinline autopictureinpicture></video>
-    <div class="badges">
-      <span class="badge">🏃 <span class="meter"><i id="mMotion"></i></span></span>
-    </div>
-    <div class="playover" id="playOver" hidden><button class="primary" id="playBtn">▶ 탭해서 보기</button></div>
-  </div>
+  <div class="grid" id="stage"></div>
   <div id="alertBox" class="alert" hidden>
     <div class="grow"><b id="alertTitle">움직임 감지</b><div class="small" id="alertTime"></div></div>
     <button class="ghost small" id="alertClose">확인</button>
   </div>
   </div><div class="split-side">
+  <div class="addcam" id="addCamBox" hidden>
+    <div class="row">
+      <input type="text" id="addCodeIn" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="카메라 코드">
+      <button class="primary" id="addCamOk" style="flex:none">추가</button>
+    </div>
+    <p class="hint" id="addCamMsg" style="margin:8px 0 0">다른 카메라 기기 화면에 보이는 8자리 코드를 입력하세요. 최대 6대까지 한 화면에서 볼 수 있습니다.</p>
+  </div>
+  <p class="hint" id="emptyNote" hidden style="margin:10px 14px 0">보고 있는 카메라가 없습니다. 위의 <b>＋ 카메라</b>로 추가하세요.</p>
+  <p class="hint" id="selNote" hidden style="margin:10px 14px 0">선택한 카메라: <b id="selName" style="color:var(--accent)"></b> · 칸을 누르면 바뀝니다. 소리 듣기·말하기·감지 설정은 선택한 카메라에 적용됩니다.</p>
   <p class="hint err" id="verWarn" hidden style="margin:10px 14px 0"></p>
   <p class="hint" id="howlNote" hidden style="margin:10px 14px 0;color:var(--warn)"></p>
-  <p class="hint err" id="camAway" hidden style="margin:10px 14px 0">⚠️ 카메라 기기에서 다른 화면으로 넘어가 감시가 멈췄습니다. 카메라 기기에서 이 앱 화면으로 돌아가 주세요.</p>
-  <p class="hint" id="camMicOff" hidden style="margin:10px 14px 0">🎙️ 카메라 쪽에서 소리 보내기를 꺼 두었습니다. 영상과 움직임 알림은 그대로 옵니다.</p>
+  <p class="hint err" id="camAway" hidden style="margin:10px 14px 0"></p>
+  <p class="hint" id="camMicOff" hidden style="margin:10px 14px 0"></p>
   <div class="ctrls">
     <button id="talkBtn" disabled>🎙️ 누르고 있는 동안 말하기</button>
     <button id="listenBtn" class="on"><span class="ic">🔊</span>소리 듣기</button>
@@ -293,13 +334,20 @@ button{-webkit-touch-callout:none}
       <ul class="evs" id="viewEvents"><li class="empty">아직 없습니다.</li></ul>
     </div>
     <div class="card">
-      <h2>감지 설정 <span class="hint" id="cfgSync"></span></h2>
+      <h2>감지 설정 <span id="cfgFor" style="color:var(--accent)"></span> <span class="hint" id="cfgSync"></span></h2>
       <div class="set"><label for="cMotion">움직임 감지</label><input type="checkbox" class="switch" id="cMotion"></div>
       <div class="slider"><input type="range" id="cMotionSens" min="1" max="10" step="1"><div class="row"><span class="grow">둔감</span><span>민감</span></div></div>
       <div class="set" style="display:block">
         <div style="margin-bottom:6px">다시 알림 간격 <span class="hint">계속 움직이면 이 간격으로 반복</span></div>
         <div class="seg" id="gapSeg"><button data-g="1">1초</button><button data-g="3">3초</button><button data-g="10">10초</button><button data-g="30">30초</button><button data-g="60">1분</button></div>
       </div>
+      <div class="set" style="display:block">
+        <div style="margin-bottom:6px">화질 <span class="hint">밖에서 데이터로 볼 땐 낮게</span></div>
+        <div class="seg" id="qSeg"><button data-q="low">낮음</button><button data-q="mid">보통</button><button data-q="high">높음</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>이 기기 설정</h2>
       <div class="set" style="display:block">
         <div style="margin-bottom:6px">이 기기의 알림 방식 <span class="hint" id="modeHint"></span></div>
         <div class="seg" id="modeSeg"><button data-m="vibe">📳 진동</button><button data-m="beep">🔔 알림음</button><button data-m="both">📳+🔔 둘 다</button></div>
@@ -317,12 +365,8 @@ button{-webkit-touch-callout:none}
         <div class="slider" style="padding:6px 0 0"><input type="range" id="cListenVol" min="1" max="10" step="1"><div class="row"><span class="grow">작게</span><span>크게</span></div></div>
       </div>
       <div class="set"><label for="cKeepOn">이 기기 화면 켜두기<br><span class="hint">거치해 둔 탭에 추천</span></label><input type="checkbox" class="switch" id="cKeepOn"></div>
-      <div class="set" style="display:block">
-        <div style="margin-bottom:6px">화질 <span class="hint">밖에서 데이터로 볼 땐 낮게</span></div>
-        <div class="seg" id="qSeg"><button data-q="low">낮음</button><button data-q="mid">보통</button><button data-q="high">높음</button></div>
-      </div>
     </div>
-    <p class="hint">이 화면이 켜져 있어야 실시간 알림을 확실히 받습니다. 다른 앱을 쓰는 동안에도 잠시는 알림이 오지만, 화면을 끄면 연결이 끊길 수 있습니다. 폰과 탭에서 동시에 볼 수 있습니다.</p>
+    <p class="hint">이 화면이 켜져 있어야 실시간 알림을 확실히 받습니다. 폰·탭·PC 여러 대에서 동시에 볼 수 있습니다.</p>
   </div>
   </div></div>
 </section>
@@ -354,7 +398,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.13-1';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const APP_VER = '2026.11.13-2';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
 const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3 };
 const GAPS = [1, 3, 10, 30, 60];   // 다시 알림 간격(초). 1초 = 계속 움직이는 동안 1초마다
 const vibePattern = gap => gap <= 1 ? [300, 100, 300] : [400, 150, 400, 150, 400];   // 1초 간격이면 진동도 짧게
@@ -394,6 +438,18 @@ const pad = n => String(n).padStart(2, '0');
 const hhmm = t => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
 const hhmmss = t => { const d = new Date(t); return hhmm(t) + ':' + pad(d.getSeconds()); };
 const KIND = { motion: '🏃 움직임 감지' };
+const MAX_CAMS = 6;   // 한 화면에서 함께 볼 수 있는 카메라 수
+// 보는 기기에 저장된 카메라 코드 목록 (예전 버전의 한 대짜리 저장값도 이어받음)
+function savedViewCodes() {
+  let list = store.get('viewCodes', null);
+  if (!Array.isArray(list)) { const one = store.get('viewCode', ''); list = one ? [one] : []; }
+  return [...new Set(list.map(cleanCode).filter(c => c.length === 8))].slice(0, MAX_CAMS);
+}
+function refreshHomeSaved() {
+  const n = savedViewCodes().length, b = $('#openSaved');
+  b.hidden = !n; b.textContent = `📺 저장된 카메라 ${n}대 보기`;
+  $('#joinHint').textContent = n ? '새 카메라 코드를 넣으면 저장된 카메라와 함께 나눠서 보여줍니다.' : '카메라 기기 화면에 보이는 8자리 코드를 입력하세요.';
+}
 // 이전 버전이 저장해 둔 감지 사진과 소리 감지 기록을 지운다 (시각만 남김)
 try {
   const old = store.get('camEvents', []);
@@ -436,7 +492,7 @@ function renderEvents(ul, evs) {
   if (!evs.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = '아직 없습니다.'; ul.append(li); return; }
   for (const ev of evs) {
     const li = document.createElement('li');
-    const k = document.createElement('span'); k.className = 'k grow'; k.textContent = KIND[ev.kind] || ev.kind;
+    const k = document.createElement('span'); k.className = 'k grow'; k.textContent = (ev.cam ? ev.cam + ' · ' : '') + (KIND[ev.kind] || ev.kind);
     const t = document.createElement('span'); t.className = 't'; t.textContent = hhmmss(ev.ts) + ' · ' + relTime(ev.ts);
     li.append(k, t); ul.append(li);
   }
@@ -514,15 +570,17 @@ function renderDiag(box, d, errName, onRetry) {
   }
 
   const hashCode = cleanCode((location.hash.match(/v=([^&]+)/) || [])[1]);
-  if (hashCode) store.set('viewCode', hashCode);
-  $('#codeIn').value = hashCode || store.get('viewCode', '');
+  $('#codeIn').value = hashCode && !savedViewCodes().includes(hashCode) ? hashCode : '';
   if (hashCode) { $('#joinCard').hidden = false; }
+  refreshHomeSaved();
+  $('#openSaved').onclick = () => View.start('');
 
   $('#pickCam').onclick = () => Cam.start();
   $('#pickView').onclick = () => { $('#joinCard').hidden = false; $('#codeIn').focus(); };
   $('#codeIn').oninput = e => { e.target.value = cleanCode(e.target.value); $('#joinErr').textContent = ''; };
   $('#joinBtn').onclick = () => {
     const c = cleanCode($('#codeIn').value);
+    if (!c && savedViewCodes().length) { View.start(''); return; }
     if (c.length !== 8) { $('#joinErr').textContent = '코드는 8자리입니다.'; return; }
     View.start(c);
   };
@@ -532,6 +590,8 @@ function renderDiag(box, d, errName, onRetry) {
    카메라 (폴드)
    ============================================================ */
 const Cam = {
+  // 보는 기기 화면의 칸과 알림에 표시되는 이름. 비워 두면 기기 이름(폴드·플립 등)
+  name() { return String(store.get('camName', '') || '').trim().slice(0, 16) || DEVICE_NAME; },
   peer: null, stream: null, code: '', facing: store.get('facing', 'environment'),
   viewers: new Map(), events: store.get('camEvents', []), cfg: { ...DEFAULT_CFG, ...store.get('cfg', {}) },
   wake: null, running: false, timers: [], lastFire: {},
@@ -761,7 +821,7 @@ const Cam = {
     try { v.conn?.close(); } catch {}
     v.conn = conn;
     conn.on('open', () => {
-      conn.send({ t: 'hello', ver: APP_VER, cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing, mic: this.micOn, name: DEVICE_NAME, away: !!this.away });
+      conn.send({ t: 'hello', ver: APP_VER, cfg: this.cfg, events: this.events.slice(0, 20), facing: this.facing, mic: this.micOn, name: this.name(), away: !!this.away });
       this.sendStatus();
     });
     conn.on('data', d => this.onMsg(d, conn));
@@ -809,7 +869,7 @@ const Cam = {
 
   sendStatus() {
     const b = this.battery;
-    this.broadcast({ t: 'status', battery: b ? { level: Math.round(b.level * 100), charging: b.charging } : null, viewers: this.liveCount(), mic: this.micOn, name: DEVICE_NAME });
+    this.broadcast({ t: 'status', battery: b ? { level: Math.round(b.level * 100), charging: b.charging } : null, viewers: this.liveCount(), mic: this.micOn, name: this.name() });
   },
 
   liveCount() { let n = 0; for (const v of this.viewers.values()) if (v.call) n++; return n; },
@@ -914,50 +974,153 @@ const Cam = {
 $('#camStop').onclick = () => { if (confirm('카메라를 끌까요?')) Cam.stop(); };
 $('#camFlip').onclick = () => Cam.flip();
 $('#camMicSw').onchange = e => Cam.setMic(e.target.checked);
+$('#camNameIn').value = store.get('camName', '');
+$('#camNameIn').oninput = e => {
+  store.set('camName', e.target.value.trim().slice(0, 16));
+  clearTimeout(Cam.nameTimer); Cam.nameTimer = setTimeout(() => Cam.sendStatus(), 500);   // 보는 기기에 바로 반영
+};
 $('#dimBtn').onclick = () => { $('#dim').hidden = false; };
 $('#dim').onclick = () => { $('#dim').hidden = true; Cam.armAutoDim(); };
 for (const ev of ['pointerdown', 'scroll']) $('#cam').addEventListener(ev, () => Cam.running && Cam.armAutoDim(), { passive: true });
 $('#shareLink').onclick = async () => {
   const url = location.origin + location.pathname + location.search + '#v=' + Cam.code;
-  try { if (navigator.share) { await navigator.share({ title: '살핌 모니터', text: '카메라 보기 링크', url }); return; } } catch { return; }
+  try { if (navigator.share) { await navigator.share({ title: '살핌 모니터', text: `${Cam.name()} 카메라 보기 링크`, url }); return; } } catch { return; }
   try { await navigator.clipboard.writeText(url); alert('링크를 복사했습니다.\n' + url); } catch { prompt('이 링크를 보는 기기로 보내세요', url); }
 };
 
 /* ============================================================
-   뷰어 (플립)
+   뷰어 — 카메라 여러 대를 한 화면에 나눠 보기
+   카메라마다 연결(link)을 하나씩 두고, 칸(tile)으로 보여준다.
+   칸을 누르면 그 카메라가 '선택'되고, 소리 듣기·말하기·감지 설정은 선택한 카메라에 적용된다.
+   움직임 알림은 어느 카메라에서 오든 카메라 이름과 함께 받는다.
    ============================================================ */
+const NOT_FOUND = '카메라를 찾을 수 없음\n카메라 기기에서 앱이 켜져 있는지 확인하세요';
 const View = {
-  peer: null, call: null, conn: null, code: '', mic: null, micTrack: null, running: false,
-  retryTimer: null, lastMsg: 0, events: [], cfg: { ...DEFAULT_CFG }, cfgTimer: null,
-  // 알림 방식 기본값은 모든 기기에서 진동. 사용자가 직접 고른 적이 있을 때만(modeChosen) 저장값을 따른다
-  // (예전 버전은 탭에 '알림음'을 기본으로 저장해 두었기 때문)
+  peer: null, links: new Map(), sel: '', running: false, solo: false, bright: false,
+  mic: null, silentTrack: null, micTrack: null,
+  // 알림 방식 기본값은 진동. 사용자가 직접 고른 적이 있을 때만(modeChosen) 저장값을 따른다
   local: (() => {
     const l = { alertMode: 'vibe', keepOn: IS_BIG && !IS_DESKTOP, listen: true, listenVol: 8, ...store.get('viewLocal', {}) };
     if (!l.modeChosen) l.alertMode = 'vibe';
-    if (!CAN_VIBRATE) l.alertMode = 'beep';   // 진동이 없는 브라우저(아이폰·아이패드)는 알림음으로
+    if (!CAN_VIBRATE) l.alertMode = 'beep';   // 진동이 없는 기기(PC·아이폰·아이패드)는 알림음으로
     return l;
-  })(), audioCtx: null, swReg: null,
-  isLive: false, viewerCount: 1, wake: null,
+  })(), audioCtx: null, swReg: null, wake: null,
 
-  async start(code) {
-    this.code = code; store.set('viewCode', code); store.set('role', 'view');
+  get L() { return this.links.get(this.sel) || null; },   // 선택한 카메라
+  camLabel(L) { return L.name || ('카메라 ' + L.code.slice(0, 4)); },
+  saveCodes() { store.set('viewCodes', [...this.links.keys()]); },
+  saveLocal() { store.set('viewLocal', this.local); },
+
+  start(code) {
+    const codes = savedViewCodes();
+    if (code && !codes.includes(code)) codes.unshift(code);
     show('view'); this.running = true;
     setStatus($('#viewDot'), $('#viewStatus'), 'wait', '준비 중…');
     try { this.audioCtx = new AudioContext(); } catch {}
-    this.lastSeenTs = store.get('lastSeenTs', 0);
     setAudioSession('playback');
     this.prepareMic();
     this.bindSettings();
-    this.applyListen();
+    for (const c of codes.slice(0, MAX_CAMS)) this.addLink(c);
+    this.saveCodes();
+    this.select(code && this.links.has(code) ? code : ([...this.links.keys()][0] || ''));
+    this.layout();
+    if (!this.links.size) this.openAdd(true);
     this.applyKeepOn();
     this.registerSW();
     this.connectPeer();
     this.watchdog = setInterval(() => this.checkAlive(), 3000);
+    store.set('role', 'view');
   },
 
-  // 마이크는 '말하기'를 누를 때만 켠다.
-  // 안드로이드는 웹페이지가 마이크를 쥐고 있으면 통화 중처럼 다뤄서 소리를 블루투스 이어폰 대신
-  // 폰 스피커로 보내는 경우가 많기 때문. 평소에는 소리 없는 트랙을 대신 보내 둔다.
+  /* ---- 카메라 칸 만들기 / 빼기 ---- */
+  addLink(code) {
+    if (this.links.has(code) || this.links.size >= MAX_CAMS) return null;
+    const L = {
+      code, name: '', cfg: { ...DEFAULT_CFG }, events: [], lastMsg: 0, state: 'wait', note: '카메라에 연결 중…',
+      retryTimer: null, mic: true, away: false, ver: '', battery: null, viewers: 1, notFound: false, closed: false,
+      seen: store.get('seen.' + code, 0),
+    };
+    const t = document.createElement('div');
+    t.className = 'tile'; t.dataset.code = code;
+    t.innerHTML = '<video autoplay playsinline autopictureinpicture></video>'
+      + '<div class="tbar"><span class="dot wait"></span><span class="tname"></span><span class="tbadge" hidden></span></div>'
+      + '<div class="tmeter"><i></i></div>'
+      + '<div class="tover" hidden></div>'
+      + '<button class="tbtn texp" title="이 카메라만 크게">⤢</button><button class="tbtn tdel" title="목록에서 빼기">✕</button>'
+      + '<div class="playover" hidden><button class="primary">▶ 탭해서 보기</button></div>';
+    L.tile = t; L.video = t.querySelector('video'); L.$ = s => t.querySelector(s);
+    t.addEventListener('click', e => { if (!e.target.closest('.tbtn, .playover')) this.select(code); });
+    L.$('.texp').onclick = () => { this.select(code); this.solo = !this.solo; this.layout(); };
+    L.$('.tdel').onclick = () => { if (confirm(`'${this.camLabel(L)}' 카메라를 목록에서 뺄까요?`)) this.removeLink(code); };
+    L.$('.playover button').onclick = () => {
+      this.audioCtx?.resume?.(); this.select(code); this.applyListen();
+      L.video.play().then(() => { L.$('.playover').hidden = true; }).catch(() => {});
+    };
+    for (const ev of ['enterpictureinpicture', 'leavepictureinpicture']) L.video.addEventListener(ev, () => {
+      $('#pipBtn').classList.toggle('on', !!document.pictureInPictureElement); this.renderBg();
+    });
+    $('#stage').append(t);
+    this.links.set(code, L);
+    this.renderTile(L);
+    if (this.peer?.open) this.dial(L);
+    return L;
+  },
+
+  removeLink(code) {
+    const L = this.links.get(code); if (!L) return;
+    if (this._talkL === L && this.talkWant) this.talk(false);
+    L.closed = true; clearTimeout(L.retryTimer);
+    try { L.call?.close(); } catch {} try { L.conn?.close(); } catch {}
+    L.video.srcObject = null; L.tile.remove();
+    this.links.delete(code); this.saveCodes();
+    if (this.sel === code) this.select([...this.links.keys()][0] || '');
+    if (this.links.size < 2) this.solo = false;
+    this.layout(); this.renderStatus(); this.renderAllEvents();
+    if (!this.links.size) this.openAdd(true);
+  },
+
+  layout() {
+    const n = this.links.size;
+    $('#stage').className = 'grid n' + Math.min(n, 4) + (n > 1 ? ' multi' : '') + (this.solo && n > 1 ? ' solo' : '') + (this.bright ? ' bright' : '');
+    $('#selNote').hidden = n < 2;
+    $('#emptyNote').hidden = n > 0;
+    $('#cfgFor').textContent = n > 1 && this.L ? '· ' + this.camLabel(this.L) : '';
+    for (const L of this.links.values()) {
+      L.$('.texp').hidden = n < 2;
+      L.$('.texp').textContent = this.solo ? '⤡' : '⤢';
+      L.$('.texp').title = this.solo ? '모두 보기' : '이 카메라만 크게';
+    }
+  },
+
+  select(code) {
+    if (this.talkWant && this._talkL && this._talkL.code !== code) this.talk(false);
+    this.sel = code;
+    for (const L of this.links.values()) L.tile.classList.toggle('sel', L.code === code);
+    const L = this.L;
+    if (L?.video.srcObject) this.watchHowl(L.video.srcObject); else clearInterval(this.howlTimer);
+    $('#selName').textContent = L ? this.camLabel(L) : '';
+    this.applyListen(); this.fillSettings(); this.renderHints(); this.renderTalkBtn(); this.layout();
+  },
+
+  openAdd(force) {
+    const box = $('#addCamBox');
+    box.hidden = force ? false : !box.hidden;
+    $('#addCamMsg').classList.remove('err');
+    if (!box.hidden) { $('#addCodeIn').value = ''; setTimeout(() => $('#addCodeIn').focus(), 50); }
+  },
+  addFromInput() {
+    const c = cleanCode($('#addCodeIn').value), msg = $('#addCamMsg');
+    const say = t => { msg.textContent = t; msg.classList.add('err'); };
+    if (c.length !== 8) return say('코드는 8자리입니다.');
+    if (this.links.has(c)) { this.select(c); $('#addCamBox').hidden = true; return; }
+    if (this.links.size >= MAX_CAMS) return say(`한 화면에서는 최대 ${MAX_CAMS}대까지 볼 수 있습니다. 칸의 ✕로 하나를 뺀 뒤 추가하세요.`);
+    this.addLink(c); this.saveCodes(); this.select(c); this.layout(); this.renderStatus();
+    $('#addCamBox').hidden = true;
+  },
+
+  /* ---- 연결 ---- */
+  // 마이크는 '말하기'를 누를 때만 켠다. 평소에는 소리 없는 트랙을 보내 둔다
+  // (안드로이드는 마이크를 쥐고 있으면 소리를 블루투스 이어폰 대신 폰 스피커로 보내는 경우가 많다)
   prepareMic() {
     const dst = this.audioCtx?.createMediaStreamDestination();
     this.mic = dst ? dst.stream : new MediaStream();
@@ -967,9 +1130,7 @@ const View = {
     $('#talkBtn').disabled = !can;
     if (!can) $('#talkBtn').textContent = '🎙️ 이 브라우저에서는 말하기를 쓸 수 없습니다';
   },
-  audioSender() {
-    return this.call?.peerConnection?.getSenders().find(s => s.track?.kind === 'audio') || null;
-  },
+  audioSender(L) { return L?.call?.peerConnection?.getSenders().find(s => s.track?.kind === 'audio') || null; },
   releaseMic() {   // 마이크를 완전히 놓아서 이어폰이 다시 음악용 연결로 돌아가게
     clearTimeout(this.micIdleTimer);
     try { this.micTrack?.stop(); } catch {}
@@ -979,164 +1140,256 @@ const View = {
 
   connectPeer() {
     if (!this.running) return;
+    clearTimeout(this.peerRetry);
     try { this.peer?.destroy(); } catch {}
     const p = new Peer(PEER_OPTS);
     this.peer = p;
-    setStatus($('#viewDot'), $('#viewStatus'), 'wait', '서버에 연결 중…');
-    p.on('open', () => this.dial());
+    this.renderStatus('서버에 연결 중…');
+    p.on('open', () => { for (const L of this.links.values()) this.dial(L); this.renderStatus(); });
     p.on('disconnected', () => { if (this.peer === p && !p.destroyed) setTimeout(() => !p.destroyed && p.disconnected && p.reconnect(), 2000); });
     p.on('error', e => {
       console.warn('peer error', e.type, e);
       if (this.peer !== p) return;
       if (e.type === 'peer-unavailable') {
-        setStatus($('#viewDot'), $('#viewStatus'), 'bad', '카메라를 찾을 수 없음 · 폴드에서 카메라가 켜져 있는지 확인');
-        this.scheduleRetry(5000);
+        const m = /salpim-v1-([A-Z0-9]{8})/.exec(e.message || '');
+        const L = m && this.links.get(m[1]);
+        if (L) { L.notFound = true; this.setLinkState(L, 'bad', NOT_FOUND); this.scheduleRetry(L, 5000); }
       } else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(e.type)) {
-        setStatus($('#viewDot'), $('#viewStatus'), 'bad', '인터넷 연결을 확인하세요. 다시 시도 중…');
-        clearTimeout(this.retryTimer); this.retryTimer = setTimeout(() => { this.retryTimer = null; this.connectPeer(); }, 6000);
+        this.renderStatus('인터넷 연결을 확인하세요. 다시 시도 중…', 'bad');
+        this.peerRetry = setTimeout(() => this.connectPeer(), 6000);
       }
     });
   },
 
-  dial() {
-    if (!this.running || !this.peer?.open) return;
-    try { this.call?.close(); } catch {}
-    try { this.conn?.close(); } catch {}
-    this.isLive = false;
-    setStatus($('#viewDot'), $('#viewStatus'), 'wait', '카메라에 연결 중…');
-    const target = PREFIX + this.code;
-    // 뷰어는 오디오만 보내지만, 카메라 영상을 받기 위해 비디오 수신을 명시
+  dial(L) {
+    if (!this.running || !this.peer?.open || L.closed) return;
+    try { L.call?.close(); } catch {}
+    try { L.conn?.close(); } catch {}
+    if (!L.notFound) this.setLinkState(L, 'wait', '카메라에 연결 중…');
+    const target = PREFIX + L.code;
+    // 보는 기기는 (말하기용) 소리만 보내지만, 카메라 영상을 받기 위해 영상 수신을 명시
     const call = this.peer.call(target, this.mic, { constraints: { offerToReceiveAudio: true, offerToReceiveVideo: true } });
-    this.call = call;
-    call.on('stream', rs => this.onStream(rs));
-    call.on('close', () => { if (this.call === call) this.lost('연결이 끊겼습니다. 다시 잇는 중…'); });
-    call.on('error', () => { if (this.call === call) this.lost('연결 오류. 다시 잇는 중…'); });
+    L.call = call;
+    call.on('stream', rs => { if (L.call === call) this.onStream(L, rs); });
+    call.on('close', () => { if (L.call === call && !L.closed) this.lost(L, '연결이 끊겼습니다. 다시 잇는 중…'); });
+    call.on('error', () => { if (L.call === call && !L.closed) this.lost(L, '연결 오류. 다시 잇는 중…'); });
     call.on('iceStateChanged', s => {
-      if (this.call !== call) return;
-      if (s === 'failed') this.lost('연결에 실패했습니다. 다른 네트워크(데이터)에서는 안 될 수 있어요. 재시도 중…');
-      if (s === 'disconnected') { this.isLive = false; setStatus($('#viewDot'), $('#viewStatus'), 'wait', '신호가 약합니다…'); }
-      if (s === 'connected' || s === 'completed') this.markLive();
+      if (L.call !== call) return;
+      if (s === 'failed') this.lost(L, '연결에 실패했습니다. 다시 시도 중…');
+      if (s === 'disconnected') this.setLinkState(L, 'wait', '신호가 약합니다…');
+      if (s === 'connected' || s === 'completed') this.markLive(L);
     });
     const conn = this.peer.connect(target, { reliable: true });
-    this.conn = conn;
-    conn.on('data', d => this.onMsg(d));
-    conn.on('open', () => { this.lastMsg = Date.now(); try { conn.send({ t: 'iam', name: DEVICE_NAME, ver: APP_VER }); } catch {} });
-    this.lastMsg = Date.now();
+    L.conn = conn;
+    conn.on('data', d => { if (L.conn === conn) this.onMsg(L, d); });
+    conn.on('open', () => { L.lastMsg = Date.now(); try { conn.send({ t: 'iam', name: DEVICE_NAME, ver: APP_VER }); } catch {} });
+    L.lastMsg = Date.now();
   },
 
-  onStream(rs) {
-    const v = $('#viewVideo');
+  onStream(L, rs) {
+    const v = L.video;
     v.srcObject = rs;
     this.applyListen();
-    this.watchHowl(rs);
-    // 아이폰 사파리는 소리가 있는 영상의 자동 재생을 막는다 → 소리 없이 먼저 재생하고 '탭해서 소리 켜기'를 보여줌
-    v.play().then(() => { $('#playOver').hidden = true; }).catch(() => {
+    if (L.code === this.sel) this.watchHowl(rs);
+    // 아이폰 사파리는 소리 있는 영상의 자동 재생을 막는다 → 소리 없이 먼저 재생하고 '탭해서 소리 켜기'를 보여줌
+    v.play().then(() => { L.$('.playover').hidden = true; }).catch(e => {
+      // 연결 중에 재생이 잠깐 끊긴 경우(AbortError)는 다시 재생만 하고, 자동 재생이 막힌 경우만 소리 없이 재생
+      if (e?.name !== 'NotAllowedError') { setTimeout(() => v.play().then(() => { L.$('.playover').hidden = true; }).catch(() => {}), 300); return; }
       v.muted = true;
       v.play().catch(() => {});
-      $('#playBtn').textContent = this.local.listen ? '🔊 탭해서 소리 켜기' : '▶ 탭해서 보기';
-      $('#playOver').hidden = false;
+      L.$('.playover button').textContent = this.local.listen && L.code === this.sel ? '🔊 탭해서 소리 켜기' : '▶ 탭해서 보기';
+      L.$('.playover').hidden = false;
     });
-    this.markLive();
+    this.markLive(L);
   },
 
-  markLive() {
-    this.isLive = true;
-    const others = this.viewerCount > 1 ? ` · ${this.viewerCount}대에서 보는 중` : '';
-    setStatus($('#viewDot'), $('#viewStatus'), 'ok', '실시간 · ' + this.code + others);
-  },
-
-  lost(msg) {
-    this.isLive = false;
-    setStatus($('#viewDot'), $('#viewStatus'), 'bad', msg);
-    this.scheduleRetry(4000);
-  },
-
-  scheduleRetry(ms) {
-    if (this.retryTimer || !this.running) return;
-    this.retryTimer = setTimeout(() => {
-      this.retryTimer = null;
+  setLinkState(L, state, note) { L.state = state; L.note = note || ''; this.renderTile(L); this.renderStatus(); },
+  markLive(L) { L.notFound = false; this.setLinkState(L, 'ok', ''); },
+  lost(L, msg) { this.setLinkState(L, 'bad', L.notFound ? NOT_FOUND : msg); this.scheduleRetry(L, 4000); },
+  scheduleRetry(L, ms) {
+    if (L.retryTimer || !this.running || L.closed) return;
+    L.retryTimer = setTimeout(() => {
+      L.retryTimer = null;
       if (!this.peer || this.peer.destroyed) this.connectPeer();
       else if (this.peer.disconnected) this.peer.reconnect();
-      else this.dial();
+      else this.dial(L);
     }, ms);
   },
-
   checkAlive() {
     if (!this.running) return;
     if (this.peer?.disconnected && !this.peer.destroyed) this.peer.reconnect();
-    if (this.lastMsg && Date.now() - this.lastMsg > 15000 && !this.retryTimer) {
-      this.lastMsg = 0;
-      this.lost('카메라 신호가 없습니다. 다시 잇는 중…');
+    for (const L of this.links.values()) {
+      if (L.lastMsg && Date.now() - L.lastMsg > 15000 && !L.retryTimer) { L.lastMsg = 0; this.lost(L, '카메라 신호가 없습니다. 다시 잇는 중…'); }
     }
   },
 
-  onMsg(d) {
+  /* ---- 화면 표시 ---- */
+  renderTile(L) {
+    L.$('.tbar .dot').className = 'dot ' + L.state;
+    L.$('.tname').textContent = this.camLabel(L);
+    const b = [];
+    if (L.code === this.sel && this.local.listen && L.mic && this.links.size > 1) b.push('🔊');
+    if (!L.mic) b.push('🎙️ 꺼짐');
+    if (L.battery) b.push(L.battery.level + '%' + (L.battery.charging ? '⚡' : ''));
+    if (L.ver && L.ver !== APP_VER) b.push('⚠ 예전 버전');
+    const tb = L.$('.tbadge');
+    tb.textContent = b.join(' · '); tb.hidden = !b.length;
+    tb.classList.toggle('low', !!(L.battery && L.battery.level <= 15 && !L.battery.charging));
+    const over = L.away ? '⏸ 카메라 기기에서 다른 화면으로 넘어가 멈췄습니다' : L.state === 'ok' ? '' : L.note;
+    const ov = L.$('.tover');
+    ov.textContent = over; ov.hidden = !over;
+    ov.classList.toggle('bad', !!(L.away || L.state === 'bad'));
+  },
+
+  renderStatus(msg, state) {
+    if (msg) { setStatus($('#viewDot'), $('#viewStatus'), state || 'wait', msg); return; }
+    const all = [...this.links.values()], n = all.length, live = all.filter(L => L.state === 'ok').length;
+    if (!n) { setStatus($('#viewDot'), $('#viewStatus'), 'wait', '카메라를 추가하세요'); return; }
+    if (n === 1) {
+      const L = all[0], others = L.viewers > 1 ? ` · ${L.viewers}대에서 보는 중` : '';
+      setStatus($('#viewDot'), $('#viewStatus'), L.state, L.state === 'ok' ? `실시간 · ${this.camLabel(L)}${others}` : L.note.split('\n')[0]);
+    } else {
+      setStatus($('#viewDot'), $('#viewStatus'), live === n ? 'ok' : live ? 'wait' : 'bad', `카메라 ${n}대 · 실시간 ${live}대`);
+    }
+  },
+
+  renderHints() {   // 선택한 카메라에 대한 안내
+    const L = this.L, pre = L && this.links.size > 1 ? `[${this.camLabel(L)}] ` : '';
+    const old = !!(L && L.ver && L.ver !== APP_VER);
+    $('#verWarn').hidden = !old;
+    if (old) $('#verWarn').textContent = `⚠️ ${pre}카메라 기기에 예전 버전이 열려 있습니다. 카메라 기기에서 종료 후 페이지를 새로고침하세요. (이 기기 ${APP_VER})`;
+    $('#camAway').hidden = !L?.away;
+    $('#camAway').textContent = `⚠️ ${pre}카메라 기기에서 다른 화면으로 넘어가 감시가 멈췄습니다. 카메라 기기에서 앱 화면으로 돌아가 주세요.`;
+    $('#camMicOff').hidden = !L || L.mic;
+    $('#camMicOff').textContent = `🎙️ ${pre}카메라 쪽에서 소리 보내기를 꺼 두었습니다. 영상과 움직임 알림은 그대로 옵니다.`;
+  },
+
+  renderTalkBtn() {
+    if (this.talkWant || $('#talkBtn').disabled) return;
+    $('#talkBtn').textContent = this.links.size > 1 && this.L ? `🎙️ ${this.camLabel(this.L)}에 말하기 · 누르고 있기` : '🎙️ 누르고 있는 동안 말하기';
+  },
+
+  renderAllEvents() {
+    const multi = this.links.size > 1, all = [];
+    for (const L of this.links.values()) for (const e of L.events) all.push({ ...e, cam: multi ? this.camLabel(L) : '' });
+    all.sort((a, b) => b.ts - a.ts);
+    renderEvents($('#viewEvents'), all.slice(0, 30));
+  },
+
+  /* ---- 카메라에서 온 메시지 ---- */
+  onMsg(L, d) {
     if (!d || typeof d !== 'object') return;
-    this.lastMsg = Date.now();
+    L.lastMsg = Date.now();
+    const isSel = L.code === this.sel;
     if (d.t === 'hello') {
-      this.events = Array.isArray(d.events) ? d.events.filter(e => e?.kind === 'motion').map(e => ({ kind: e.kind, ts: e.ts })) : [];
-      renderEvents($('#viewEvents'), this.events);
+      L.events = (Array.isArray(d.events) ? d.events : []).filter(e => e?.kind === 'motion' && typeof e.ts === 'number').map(e => ({ kind: 'motion', ts: e.ts }));
       // 연결이 끊겼던 사이(다른 앱을 오래 쓰는 동안 등)에 감지된 것이 있으면 알려준다
-      const missed = this.lastSeenTs ? this.events.filter(e => e.ts > this.lastSeenTs) : [];
-      if (missed.length) this.showMissed(missed);
-      this.markSeen();
-      $('#camAway').hidden = !d.away;
-      if (d.cfg) { this.cfg = { ...DEFAULT_CFG, ...d.cfg }; this.fillSettings(); }
-      if (typeof d.mic === 'boolean') $('#camMicOff').hidden = d.mic;
-      if (d.name) this.camName = String(d.name).slice(0, 12);
-      const old = d.ver !== APP_VER;
-      $('#verWarn').hidden = !old;
-      if (old) $('#verWarn').textContent = '⚠️ 카메라 기기에 예전 버전이 열려 있습니다. 카메라 기기에서 종료 후 페이지를 새로고침하세요. (이 기기 ' + APP_VER + ')';
+      const missed = L.seen ? L.events.filter(e => e.ts > L.seen) : [];
+      if (missed.length) this.showMissed(L, missed);
+      this.markSeen(L);
+      if (d.cfg) L.cfg = { ...DEFAULT_CFG, ...d.cfg };
+      L.away = !!d.away;
+      if (typeof d.mic === 'boolean') L.mic = d.mic;
+      if (d.name) L.name = String(d.name).slice(0, 16);
+      L.ver = d.ver || 'old';
+      this.renderAllEvents(); this.renderTile(L); this.renderStatus();
+      if (isSel) { this.fillSettings(); this.renderHints(); this.renderTalkBtn(); this.layout(); $('#selName').textContent = this.camLabel(L); this.updateMediaSession(this.local.listen); }
     } else if (d.t === 'cfg' && d.cfg) {
-      this.cfg = { ...DEFAULT_CFG, ...d.cfg }; this.fillSettings();
-      $('#cfgSync').textContent = '· 카메라에 적용됨';
-      setTimeout(() => { $('#cfgSync').textContent = ''; }, 2000);
+      L.cfg = { ...DEFAULT_CFG, ...d.cfg };
+      if (isSel) {
+        this.fillSettings();
+        $('#cfgSync').textContent = '· 카메라에 적용됨';
+        setTimeout(() => { $('#cfgSync').textContent = ''; }, 2000);
+      }
     } else if (d.t === 'lv' && typeof d.m === 'number') {
-      const mThr = motionThr(this.cfg.motionSens);
-      $('#mMotion').style.width = Math.min(100, d.m / mThr * 60) + '%'; $('#mMotion').classList.toggle('hot', d.m > mThr);
+      const thr = motionThr(L.cfg.motionSens), i = L.$('.tmeter i');
+      i.style.width = Math.min(100, d.m / thr * 60) + '%'; i.classList.toggle('hot', d.m > thr);
     } else if (d.t === 'status') {
-      const b = d.battery;
-      if (typeof d.mic === 'boolean') $('#camMicOff').hidden = d.mic;
-      if (d.name) this.camName = String(d.name).slice(0, 12);
-      $('#viewBatt').textContent = b ? `${this.camName || '카메라'} ${b.level}%${b.charging ? ' ⚡' : ''}` : '';
-      if (b && b.level <= 15 && !b.charging) $('#viewBatt').style.color = 'var(--bad)'; else $('#viewBatt').style.color = '';
-      if (typeof d.viewers === 'number' && d.viewers !== this.viewerCount) { this.viewerCount = d.viewers; if (this.isLive) this.markLive(); }
-    } else if (d.t === 'event' && d.ev?.kind === 'motion') {
-      this.events.unshift({ kind: 'motion', ts: d.ev.ts }); this.events = this.events.slice(0, 30);
-      renderEvents($('#viewEvents'), this.events);
-      this.markSeen();
-      this.alert(d.ev);
+      L.battery = d.battery && typeof d.battery.level === 'number' ? d.battery : null;
+      if (typeof d.mic === 'boolean') L.mic = d.mic;
+      if (d.name) L.name = String(d.name).slice(0, 16);
+      if (typeof d.viewers === 'number') L.viewers = d.viewers;
+      this.renderTile(L); this.renderStatus();
+      if (isSel) { this.renderHints(); this.renderTalkBtn(); this.layout(); $('#selName').textContent = this.camLabel(L); }
+      if (this.links.size > 1) this.renderAllEvents();
+    } else if (d.t === 'event' && d.ev?.kind === 'motion' && typeof d.ev.ts === 'number') {
+      L.events.unshift({ kind: 'motion', ts: d.ev.ts }); L.events = L.events.slice(0, 30);
+      this.markSeen(L); this.renderAllEvents();
+      this.alert(L, d.ev);
     } else if (d.t === 'away') {   // 카메라 기기가 앱 화면을 벗어남 → 카메라가 멈춤
-      $('#camAway').hidden = !d.on;
+      L.away = !!d.on; this.renderTile(L);
+      if (isSel) this.renderHints();
       if (d.on) {
-        this.signal();
-        this.notify('살핌 · 카메라가 멈췄습니다', '카메라 기기에서 다른 화면으로 넘어갔습니다. 카메라 기기에서 앱으로 돌아가 주세요.', 'salpim-away');
+        this.signal(L.cfg.gap);
+        this.notify(`살핌 · ${this.camLabel(L)} 카메라가 멈췄습니다`, '카메라 기기에서 다른 화면으로 넘어갔습니다. 카메라 기기에서 앱으로 돌아가 주세요.', 'salpim-away-' + L.code, L.cfg.gap);
       }
     }
   },
 
-  markSeen() {
-    const t = this.events[0]?.ts || 0;
-    if (t > (this.lastSeenTs || 0)) { this.lastSeenTs = t; store.set('lastSeenTs', t); }
+  markSeen(L) {
+    const t = L.events[0]?.ts || 0;
+    if (t > (L.seen || 0)) { L.seen = t; store.set('seen.' + L.code, t); }
   },
-  showMissed(list) {
-    const box = $('#alertBox');
+  showMissed(L, list) {
+    const multi = this.links.size > 1;
     this.alertCount = list.length;
-    $('#alertTitle').textContent = `🏃 연결이 끊긴 사이 움직임 ${list.length}번`;
+    $('#alertTitle').textContent = `🏃 ${multi ? this.camLabel(L) + ' · ' : ''}연결이 끊긴 사이 움직임 ${list.length}번`;
     $('#alertTime').textContent = '마지막 ' + hhmmss(list[0].ts);
-    box.hidden = false;
+    $('#alertBox').hidden = false;
   },
-  notify(title, body, tag) {   // 화면에 안 보일 때(다른 앱 사용 중) 휴대폰 알림
+
+  alert(L, ev) {
+    // 알림이 떠 있는 동안 또 감지되면 횟수를 올리고 다시 울린다 (확인을 누르면 초기화)
+    const box = $('#alertBox'), multi = this.links.size > 1, nm = this.camLabel(L);
+    this.alertCount = box.hidden ? 1 : (this.alertCount || 1) + 1;
+    $('#alertTitle').textContent = (multi ? `🏃 ${nm} · 움직임 감지` : KIND.motion) + (this.alertCount > 1 ? ` · ${this.alertCount}번째` : '');
+    $('#alertTime').textContent = (this.alertCount > 1 ? '마지막 ' : '') + hhmmss(ev.ts);
+    box.hidden = false;
+    box.style.animation = 'none'; void box.offsetHeight; box.style.animation = '';   // 깜빡임 다시
+    L.tile.classList.remove('alerting'); void L.tile.offsetWidth; L.tile.classList.add('alerting');   // 어느 칸인지 깜빡여 표시
+    this.signal(L.cfg.gap);
+    this.notify('살핌 · ' + (multi ? nm + ' · ' : '') + '움직임 감지', hhmmss(ev.ts) + ' 탭해서 확인', 'salpim-motion-' + L.code, L.cfg.gap);
+  },
+
+  notify(title, body, tag, gap) {   // 화면에 안 보일 때(다른 앱 사용 중) 휴대폰 알림
     if (!this.swReg || !('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return false;
-    this.swReg.showNotification(title, { body, tag, renotify: true, vibrate: vibePattern(this.cfg.gap) }).catch(() => {});
+    this.swReg.showNotification(title, { body, tag, renotify: true, vibrate: vibePattern(gap || 3) }).catch(() => {});
     return true;
   },
 
+  signal(gap) {   // 선택한 방식으로 한 번 알림. 진동이면 브라우저가 받아들였는지(true/false)를 돌려준다
+    gap = gap || this.L?.cfg.gap || 3;
+    const mode = this.local.alertMode;
+    if (mode === 'beep') { this.beep(); return true; }
+    let ok = false;
+    try { ok = navigator.vibrate?.(vibePattern(gap)) === true; } catch {}
+    if (mode === 'both') { this.beep(); return ok; }   // 진동 + 알림음 (이어폰이 연결돼 있으면 소리는 이어폰으로)
+    if (!ok) {   // 브라우저가 진동을 거부하면 조용히 넘어가지 않고 알림음으로 대신
+      this.beep();
+      if (!this.vibeBlocked) { this.vibeBlocked = true; this.fillSettings(); }
+    } else if (this.vibeBlocked) { this.vibeBlocked = false; this.fillSettings(); }
+    return ok;
+  },
+
+  testVibe() {   // '진동 시험' 버튼
+    const prev = this.local.alertMode;
+    this.local.alertMode = 'vibe';
+    const ok = this.signal();
+    this.local.alertMode = prev;
+    $('#vibeResult').hidden = false;
+    $('#vibeResult').textContent = ok
+      ? '✓ 브라우저가 진동을 보냈습니다. 그런데도 진동이 없다면 이 기기가 무음 모드이거나(크롬은 무음 모드에서 진동하지 않습니다), 진동 세기가 0으로 되어 있는지 확인하세요.'
+      : '✕ 브라우저가 진동을 막았습니다. 화면을 한 번 터치한 뒤 다시 눌러 보세요. 계속 막히면 알림음을 쓰세요.';
+  },
+
+  beep() { playSound(this.audioCtx, this.local.sound, this.local.vol); },
+
   async togglePip() {
-    const v = $('#viewVideo'), note = $('#pipNote');
+    const v = this.L?.video, note = $('#pipNote');
     note.hidden = true;
+    if (!v) return;
     try {
-      if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return; }
+      if (document.pictureInPictureElement) { await document.exitPictureInPicture(); if (document.pictureInPictureElement !== v) return; }
       if (document.pictureInPictureEnabled && v.requestPictureInPicture && v.videoWidth) { await v.requestPictureInPicture(); return; }
     } catch {}
     try {   // 아이폰·아이패드 사파리 방식
@@ -1161,7 +1414,7 @@ const View = {
         IS_IOS && !IS_STANDALONE ? '아이폰·아이패드는 사파리 공유 버튼 → 홈 화면에 추가 한 앱에서만 알림을 받을 수 있습니다'
         : '다른 앱을 쓰는 동안 움직임 알림을 받는 통로입니다'],
       [listen, listen ? '소리 듣기 켜짐' : '🔊 소리 듣기를 켜 두세요', '소리가 재생되는 동안은 크롬이 이 화면을 멈추지 않습니다. 듣기 크기를 작게 해도 됩니다'],
-      [pip || null, pip ? '작은 화면으로 보는 중' : '⧉ 작은 화면 (선택)', '다른 앱 위에 영상을 작게 띄워 둡니다'],
+      [pip || null, pip ? '작은 화면으로 보는 중' : '⧉ 작은 화면 (선택)', '다른 앱 위에 선택한 카메라 영상을 작게 띄워 둡니다'],
     ];
     ul.textContent = '';
     for (const [ok, title, sub] of rows) {
@@ -1175,53 +1428,10 @@ const View = {
     }
   },
 
-  alert(ev) {
-    // 알림이 떠 있는 동안 또 감지되면 횟수를 올리고 다시 울린다 (확인을 누르면 초기화)
-    const box = $('#alertBox');
-    this.alertCount = box.hidden ? 1 : (this.alertCount || 1) + 1;
-    $('#alertTitle').textContent = (KIND[ev.kind] || '감지') + (this.alertCount > 1 ? ` · ${this.alertCount}번째` : '');
-    $('#alertTime').textContent = (this.alertCount > 1 ? '마지막 ' : '') + hhmmss(ev.ts);
-    box.hidden = false;
-    box.style.animation = 'none'; void box.offsetHeight; box.style.animation = '';   // 깜빡임 다시
-    this.signal();
-    if (this.swReg && 'Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-      this.swReg.showNotification('살핌 · ' + (KIND[ev.kind] || '감지'), {
-        body: hhmmss(ev.ts) + ' 탭해서 확인', tag: 'salpim-' + ev.kind, renotify: true,
-        vibrate: vibePattern(this.cfg.gap),
-      }).catch(() => {});
-    }
-  },
-
-  signal() {   // 선택한 방식으로 한 번 알림. 진동이면 브라우저가 받아들였는지(true/false)를 돌려준다
-    const mode = this.local.alertMode;
-    if (mode === 'beep') { this.beep(); return true; }
-    let ok = false;
-    try { ok = navigator.vibrate?.(vibePattern(this.cfg.gap)) === true; } catch {}
-    if (mode === 'both') { this.beep(); return ok; }   // 진동 + 알림음 (이어폰이 연결돼 있으면 소리는 이어폰으로)
-    if (!ok) {   // 브라우저가 진동을 거부하면 조용히 넘어가지 않고 알림음으로 대신
-      this.beep();
-      if (!this.vibeBlocked) { this.vibeBlocked = true; this.fillSettings(); }
-    } else if (this.vibeBlocked) { this.vibeBlocked = false; this.fillSettings(); }
-    return ok;
-  },
-
-  testVibe() {   // '진동 시험' 버튼
-    const prev = this.local.alertMode;
-    this.local.alertMode = 'vibe';
-    const ok = this.signal();
-    this.local.alertMode = prev;
-    $('#vibeResult').hidden = false;
-    $('#vibeResult').textContent = ok
-      ? '✓ 브라우저가 진동을 보냈습니다. 그런데도 진동이 없다면 이 기기가 무음 모드이거나(크롬은 무음 모드에서 진동하지 않습니다), 진동 세기가 0으로 되어 있는지 확인하세요.'
-      : '✕ 브라우저가 진동을 막았습니다. 화면을 한 번 터치한 뒤 다시 눌러 보세요. 계속 막히면 알림음을 쓰세요.';
-  },
-
-  beep() { playSound(this.audioCtx, this.local.sound, this.local.vol); },
-
   async registerSW() {
-    if (!('serviceWorker' in navigator) || !('Notification' in window)) { $('#notiBtn').hidden = true; return; }
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) { $('#notiBtn').hidden = true; this.renderBg(); return; }
     try { this.swReg = await navigator.serviceWorker.register('sw.js'); }
-    catch { $('#notiBtn').hidden = true; return; }
+    catch { $('#notiBtn').hidden = true; this.renderBg(); return; }
     this.syncNotiBtn();
   },
   syncNotiBtn() {
@@ -1236,34 +1446,41 @@ const View = {
   bindSettings() {
     if (this._bound) { this.fillSettings(); return; }
     this._bound = true;
+    // 감지 설정은 선택한 카메라로 보낸다
     const send = () => {
-      clearTimeout(this.cfgTimer);
-      this.cfgTimer = setTimeout(() => { if (this.conn?.open) this.conn.send({ t: 'config', cfg: this.cfg }); }, 300);
+      const L = this.L; if (!L) return;
+      clearTimeout(L.cfgTimer);
+      L.cfgTimer = setTimeout(() => { if (L.conn?.open) L.conn.send({ t: 'config', cfg: L.cfg }); }, 300);
     };
-    $('#cMotion').onchange = e => { this.cfg.motion = e.target.checked; send(); };
-    $('#cMotionSens').oninput = e => { this.cfg.motionSens = +e.target.value; send(); };
+    const cfg = () => this.L?.cfg;
+    $('#cMotion').onchange = e => { if (cfg()) { cfg().motion = e.target.checked; send(); } };
+    $('#cMotionSens').oninput = e => { if (cfg()) { cfg().motionSens = +e.target.value; send(); } };
+    for (const b of document.querySelectorAll('#qSeg button')) b.onclick = () => { if (cfg()) { cfg().quality = b.dataset.q; this.fillSettings(); send(); } };
+    for (const b of document.querySelectorAll('#gapSeg button')) b.onclick = () => { if (cfg()) { cfg().gap = +b.dataset.g; this.fillSettings(); send(); } };
     for (const b of document.querySelectorAll('#modeSeg button')) b.onclick = () => {
-      this.local.alertMode = b.dataset.m; this.local.modeChosen = true; store.set('viewLocal', this.local);
+      this.local.alertMode = b.dataset.m; this.local.modeChosen = true; this.saveLocal();
       this.fillSettings(); this.signal();   // 고르면 한 번 미리 울려 확인
     };
-    $('#cKeepOn').onchange = e => { this.local.keepOn = e.target.checked; store.set('viewLocal', this.local); this.applyKeepOn(); };
-    for (const b of document.querySelectorAll('#qSeg button')) b.onclick = () => { this.cfg.quality = b.dataset.q; this.fillSettings(); send(); };
-    for (const b of document.querySelectorAll('#gapSeg button')) b.onclick = () => { this.cfg.gap = +b.dataset.g; this.fillSettings(); send(); };
+    $('#cKeepOn').onchange = e => { this.local.keepOn = e.target.checked; this.saveLocal(); this.applyKeepOn(); };
     const grid = $('#soundGrid');
     for (const [k, s] of Object.entries(SOUNDS)) {
       const b = document.createElement('button'); b.dataset.s = k; b.textContent = s.label;
-      b.onclick = () => { this.local.sound = k; store.set('viewLocal', this.local); this.fillSettings(); this.beep(); };
+      b.onclick = () => { this.local.sound = k; this.saveLocal(); this.fillSettings(); this.beep(); };
       grid.append(b);
     }
     $('#vibeTest').onclick = () => this.testVibe();
     $('#cListenVol').oninput = e => { this.local.listenVol = +e.target.value; this.saveLocal(); this.applyListen(); };
-    $('#cVol').oninput = e => { this.local.vol = +e.target.value; store.set('viewLocal', this.local); };
+    $('#cVol').oninput = e => { this.local.vol = +e.target.value; this.saveLocal(); };
     $('#cVol').onchange = () => this.beep();   // 손을 떼면 그 크기로 미리 듣기
     this.fillSettings();
   },
   fillSettings() {
-    $('#cMotion').checked = this.cfg.motion;
-    $('#cMotionSens').value = this.cfg.motionSens;
+    const c = this.L?.cfg || DEFAULT_CFG;
+    $('#cMotion').checked = c.motion;
+    $('#cMotionSens').value = c.motionSens;
+    for (const b of document.querySelectorAll('#qSeg button')) b.classList.toggle('on', b.dataset.q === c.quality);
+    const gap = GAPS.includes(c.gap) ? c.gap : 3;
+    for (const b of document.querySelectorAll('#gapSeg button')) b.classList.toggle('on', +b.dataset.g === gap);
     $('#cKeepOn').checked = this.local.keepOn;
     if (!['vibe', 'beep', 'both'].includes(this.local.alertMode)) this.local.alertMode = 'vibe';
     for (const b of document.querySelectorAll('#modeSeg button')) {
@@ -1275,9 +1492,6 @@ const View = {
       : !isVibe ? ''
       : this.vibeBlocked || !('vibrate' in navigator) ? '· 이 브라우저가 진동을 막아 알림음으로 대신 울립니다' : '';
     $('#vibeTest').hidden = this.local.alertMode === 'beep' || !('vibrate' in navigator);
-    for (const b of document.querySelectorAll('#qSeg button')) b.classList.toggle('on', b.dataset.q === this.cfg.quality);
-    const gap = GAPS.includes(this.cfg.gap) ? this.cfg.gap : 3;
-    for (const b of document.querySelectorAll('#gapSeg button')) b.classList.toggle('on', +b.dataset.g === gap);
     if (!SOUNDS[this.local.sound]) this.local.sound = 'chime';
     if (!(this.local.vol >= 1 && this.local.vol <= 10)) this.local.vol = 7;
     // 알림음 고르기는 '알림음' 모드이거나, 진동이 막혀 알림음으로 대신 울리는 경우에 보여준다
@@ -1298,11 +1512,15 @@ const View = {
     }
   },
 
+  /* ---- 말하기 (선택한 카메라에) ---- */
   async talk(on) {
     if (!this.silentTrack || on === !!this.talkWant) return;
+    if (on && !this.L) return;
     this.talkWant = on;
     const btn = $('#talkBtn');
     if (on) {
+      this._talkL = this.L;
+      const nm = this.links.size > 1 ? this.camLabel(this._talkL) + '에 ' : '';
       clearTimeout(this.micIdleTimer);
       btn.classList.add('on'); btn.textContent = '🎙️ 마이크 켜는 중…';
       setAudioSession('play-and-record');
@@ -1314,16 +1532,16 @@ const View = {
           this.talkWant = false;
           btn.classList.remove('on');
           btn.textContent = '🎙️ 마이크 권한이 필요합니다 · 허용 후 다시 누르세요';
-          setTimeout(() => { if (!this.talkWant) btn.textContent = '🎙️ 누르고 있는 동안 말하기'; }, 4000);
+          setTimeout(() => this.renderTalkBtn(), 4000);
           return;
         }
       }
       if (!this.talkWant) { this.micIdleTimer = setTimeout(() => this.releaseMic(), 8000); return; }   // 준비 중에 손을 뗌
-      try { await this.audioSender()?.replaceTrack(this.micTrack); } catch {}
-      btn.textContent = '🔴 말하는 중… 손을 떼면 끝';
+      try { await this.audioSender(this._talkL)?.replaceTrack(this.micTrack); } catch {}
+      btn.textContent = `🔴 ${nm}말하는 중… 손을 떼면 끝`;
     } else {
-      btn.classList.remove('on'); btn.textContent = '🎙️ 누르고 있는 동안 말하기';
-      try { await this.audioSender()?.replaceTrack(this.silentTrack); } catch {}
+      btn.classList.remove('on');
+      try { await this.audioSender(this._talkL)?.replaceTrack(this.silentTrack); } catch {}
       // 바로 다시 누를 때 지연이 없도록 8초 뒤에 마이크를 놓는다
       clearTimeout(this.micIdleTimer);
       this.micIdleTimer = setTimeout(() => this.releaseMic(), 8000);
@@ -1331,28 +1549,32 @@ const View = {
     // 하울링 방지: 말하는 동안 카메라 쪽 소리는 잠시 끔
     this.talking = on;
     this.applyListen();
-    if (this.conn?.open) this.conn.send({ t: 'talk', on });
-    if (on) navigator.vibrate?.(30);
+    const L = this._talkL;
+    if (L?.conn?.open) L.conn.send({ t: 'talk', on });
+    if (on) navigator.vibrate?.(30); else this.renderTalkBtn();
   },
 
-  /* ---- 소리 듣기 + 하울링 막기 ---- */
+  /* ---- 소리 듣기 (선택한 카메라만) + 하울링 막기 ---- */
   applyListen() {
-    const v = $('#viewVideo'), on = !!this.local.listen;
-    v.muted = !on || !!this.talking || Date.now() < (this.howlPauseUntil || 0);
-    v.volume = Math.min(1, Math.max(0.05, (this.local.listenVol || 8) / 10));
+    const on = !!this.local.listen, pause = Date.now() < (this.howlPauseUntil || 0);
+    const vol = Math.min(1, Math.max(0.05, (this.local.listenVol || 8) / 10));
+    for (const L of this.links.values()) {
+      L.video.muted = !on || L.code !== this.sel || !!this.talking || pause;   // 여러 소리가 겹치지 않게 선택한 카메라 소리만
+      L.video.volume = vol;
+      this.renderTile(L);
+    }
     const b = $('#listenBtn');
     b.classList.toggle('on', on); b.querySelector('.ic').textContent = on ? '🔊' : '🔇';
     this.updateMediaSession(on);
     this.renderBg();
   },
-  saveLocal() { store.set('viewLocal', this.local); },
 
   // 휴대폰 잠금화면·알림창의 미디어 표시와, 블루투스 이어폰의 재생/정지 버튼을 실시간 소리 켜기/끄기에 연결
   updateMediaSession(on) {
     if (!('mediaSession' in navigator)) return;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: '살핌 모니터', artist: on ? '실시간 소리 듣는 중' : '소리 꺼짐 · 움직임 알림 대기', album: this.code || '',
+        title: '살핌 모니터', artist: on ? '실시간 소리 듣는 중' : '소리 꺼짐 · 움직임 알림 대기', album: this.L ? this.camLabel(this.L) : '',
       });
       navigator.mediaSession.playbackState = on ? 'playing' : 'paused';
       if (this._msBound) return;
@@ -1360,13 +1582,13 @@ const View = {
       const set = val => () => {
         if (!this.running) return;
         this.local.listen = val; this.saveLocal(); this.fillSettings(); this.applyListen();
-        $('#viewVideo').play().catch(() => {});
+        for (const L of this.links.values()) L.video.play().catch(() => {});
         if (val) $('#howlNote').hidden = true;
       };
       navigator.mediaSession.setActionHandler('play', set(true));
       navigator.mediaSession.setActionHandler('pause', set(false));
       // 지원하는 크롬에서는 다른 앱으로 넘어갈 때 영상이 자동으로 작은 화면이 된다
-      try { navigator.mediaSession.setActionHandler('enterpictureinpicture', () => $('#viewVideo').requestPictureInPicture().catch(() => {})); } catch {}
+      try { navigator.mediaSession.setActionHandler('enterpictureinpicture', () => this.L?.video.requestPictureInPicture().catch(() => {})); } catch {}
     } catch {}
   },
 
@@ -1386,7 +1608,8 @@ const View = {
     const lo = Math.floor(300 / hz), hi = Math.min(buf.length - 1, Math.ceil(6000 / hz));
     let lastBin = -1, run = 0;
     this.howlTimer = setInterval(() => {
-      if ($('#viewVideo').muted) { run = 0; return; }   // 이 기기가 소리를 안 내면 하울링 고리도 없음
+      const v = this.L?.video;
+      if (!v || v.muted) { run = 0; return; }   // 이 기기가 소리를 안 내면 하울링 고리도 없음
       ac.resume?.();
       an.getFloatFrequencyData(buf);
       let max = -Infinity, at = -1, sum = 0;
@@ -1405,7 +1628,7 @@ const View = {
     this.howlPauseUntil = Date.now() + 2000;   // 2초 쉬어서 고리를 끊고
     if (vol <= 2) {
       this.local.listen = false;
-      note.textContent = '📢 두 기기가 가까워 삐— 소리(하울링)가 계속 생겨 소리 듣기를 껐습니다. 기기를 다른 방에 두거나 멀리 떨어뜨린 뒤 🔊를 다시 켜세요.';
+      note.textContent = '📢 기기끼리 가까워 삐— 소리(하울링)가 계속 생겨 소리 듣기를 껐습니다. 기기를 다른 방에 두거나 멀리 떨어뜨린 뒤 🔊를 다시 켜세요.';
     } else {
       this.local.listenVol = Math.max(2, Math.floor(vol * 0.6));
       note.textContent = `📢 삐— 소리(하울링)가 생겨 듣기 소리를 ${vol} → ${this.local.listenVol}로 줄였습니다. 카메라 기기와 거리를 두면 다시 키워도 됩니다.`;
@@ -1418,24 +1641,28 @@ const View = {
 
   stop() {
     this.running = false;
-    clearInterval(this.watchdog); clearInterval(this.howlTimer); clearTimeout(this.retryTimer); this.retryTimer = null;
-    try { this.call?.close(); } catch {} try { this.conn?.close(); } catch {}
+    clearInterval(this.watchdog); clearInterval(this.howlTimer); clearTimeout(this.peerRetry);
+    for (const L of this.links.values()) {
+      L.closed = true; clearTimeout(L.retryTimer);
+      try { L.call?.close(); } catch {} try { L.conn?.close(); } catch {}
+      L.video.srcObject = null; L.tile.remove();
+    }
+    this.links.clear(); this.sel = ''; this.solo = false;   // 저장된 카메라 목록은 그대로 둔다
     try { this.peer?.destroy(); } catch {}
     this.mic?.getTracks().forEach(t => t.stop());
     this.talkWant = false; this.talking = false; this.releaseMic();
     try { this.audioCtx?.close(); } catch {}
     this.applyKeepOn();
-    $('#viewVideo').srcObject = null;
     show('home');
+    refreshHomeSaved();
   },
 };
 
 $('#viewStop').onclick = () => View.stop();
-$('#playBtn').onclick = () => {
-  View.audioCtx?.resume?.();
-  View.applyListen();
-  $('#viewVideo').play().then(() => { $('#playOver').hidden = true; }).catch(() => {});
-};
+$('#addCamBtn').onclick = () => View.openAdd();
+$('#addCamOk').onclick = () => View.addFromInput();
+$('#addCodeIn').oninput = e => { e.target.value = cleanCode(e.target.value); $('#addCamMsg').classList.remove('err'); };
+$('#addCodeIn').onkeydown = e => { if (e.key === 'Enter') View.addFromInput(); };
 $('#alertClose').onclick = () => { $('#alertBox').hidden = true; View.alertCount = 0; };
 $('#listenBtn').onclick = () => {
   View.local.listen = !View.local.listen;
@@ -1443,18 +1670,15 @@ $('#listenBtn').onclick = () => {
   $('#howlNote').hidden = true;
   View.saveLocal(); View.fillSettings(); View.applyListen();
 };
-$('#flipBtn').onclick = () => { if (View.conn?.open) View.conn.send({ t: 'flip' }); };
-$('#brightBtn').onclick = e => { e.currentTarget.classList.toggle('on', $('#stage').classList.toggle('bright')); };
+$('#flipBtn').onclick = () => { const L = View.L; if (L?.conn?.open) L.conn.send({ t: 'flip' }); };
+$('#brightBtn').onclick = e => { View.bright = !View.bright; e.currentTarget.classList.toggle('on', View.bright); View.layout(); };
 $('#pipBtn').onclick = () => View.togglePip();
-for (const ev of ['enterpictureinpicture', 'leavepictureinpicture']) $('#viewVideo').addEventListener(ev, () => {
-  $('#pipBtn').classList.toggle('on', !!document.pictureInPictureElement); View.renderBg();
-});
 $('#fsBtn').onclick = () => {
-  const st = $('#stage'), v = $('#viewVideo');
+  const st = $('#stage'), v = View.L?.video;
   if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); return; }
   if (st.requestFullscreen) st.requestFullscreen().catch(() => {});
   else if (st.webkitRequestFullscreen) st.webkitRequestFullscreen();   // 아이패드
-  else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();         // 아이폰은 영상만 전체 화면
+  else if (v?.webkitEnterFullscreen) v.webkitEnterFullscreen();        // 아이폰은 선택한 카메라 영상만 전체 화면
 };
 $('#notiBtn').onclick = async () => { try { await Notification.requestPermission(); } catch {} View.syncNotiBtn(); };
 // 말하기: 누르고 있는 동안
@@ -1483,12 +1707,12 @@ document.addEventListener('visibilitychange', () => {
   if (View.running) {
     View.audioCtx?.resume?.();
     View.applyKeepOn();
-    $('#viewVideo').play().catch(() => {});
+    for (const L of View.links.values()) L.video.play().catch(() => {});
     if (View.peer?.disconnected && !View.peer.destroyed) View.peer.reconnect();
-    renderEvents($('#viewEvents'), View.events);
+    View.renderAllEvents();
   }
 });
-setInterval(() => { if (View.running && !$('#viewEvents .empty')) renderEvents($('#viewEvents'), View.events); }, 60000);
+setInterval(() => { if (View.running) View.renderAllEvents(); }, 60000);
 try { if (sessionStorage.getItem('salpim.auto') === 'cam') { sessionStorage.removeItem('salpim.auto'); Cam.start(); } } catch {}
 </script>
 </body>
