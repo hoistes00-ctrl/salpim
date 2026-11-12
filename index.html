@@ -334,7 +334,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.12-2';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const APP_VER = '2026.11.12-3';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
 const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3 };
 const GAPS = [1, 3, 10, 30, 60];   // 다시 알림 간격(초). 1초 = 계속 움직이는 동안 1초마다
 const vibePattern = gap => gap <= 1 ? [300, 100, 300] : [400, 150, 400, 150, 400];   // 1초 간격이면 진동도 짧게
@@ -853,9 +853,9 @@ const View = {
   async start(code) {
     this.code = code; store.set('viewCode', code); store.set('role', 'view');
     show('view'); this.running = true;
-    setStatus($('#viewDot'), $('#viewStatus'), 'wait', '마이크 준비 중…');
+    setStatus($('#viewDot'), $('#viewStatus'), 'wait', '준비 중…');
     try { this.audioCtx = new AudioContext(); } catch {}
-    await this.prepareMic();
+    this.prepareMic();
     this.bindSettings();
     this.applyListen();
     this.applyKeepOn();
@@ -864,19 +864,25 @@ const View = {
     this.watchdog = setInterval(() => this.checkAlive(), 3000);
   },
 
-  async prepareMic() {
-    try {
-      this.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      this.micTrack = this.mic.getAudioTracks()[0];
-      this.micTrack.enabled = false;
-      $('#talkBtn').disabled = false;
-    } catch {
-      // 마이크 없이도 보기는 가능: 무음 트랙으로 대체
-      const dst = this.audioCtx?.createMediaStreamDestination();
-      this.mic = dst ? dst.stream : new MediaStream();
-      $('#talkBtn').disabled = true;
-      $('#talkBtn').textContent = '🎙️ 마이크 권한이 없어 말하기를 쓸 수 없습니다';
-    }
+  // 마이크는 '말하기'를 누를 때만 켠다.
+  // 안드로이드는 웹페이지가 마이크를 쥐고 있으면 통화 중처럼 다뤄서 소리를 블루투스 이어폰 대신
+  // 폰 스피커로 보내는 경우가 많기 때문. 평소에는 소리 없는 트랙을 대신 보내 둔다.
+  prepareMic() {
+    const dst = this.audioCtx?.createMediaStreamDestination();
+    this.mic = dst ? dst.stream : new MediaStream();
+    this.silentTrack = this.mic.getAudioTracks()[0] || null;
+    this.micTrack = null;
+    const can = !!(navigator.mediaDevices?.getUserMedia && this.silentTrack);
+    $('#talkBtn').disabled = !can;
+    if (!can) $('#talkBtn').textContent = '🎙️ 이 브라우저에서는 말하기를 쓸 수 없습니다';
+  },
+  audioSender() {
+    return this.call?.peerConnection?.getSenders().find(s => s.track?.kind === 'audio') || null;
+  },
+  releaseMic() {   // 마이크를 완전히 놓아서 이어폰이 다시 음악용 연결로 돌아가게
+    clearTimeout(this.micIdleTimer);
+    try { this.micTrack?.stop(); } catch {}
+    this.micTrack = null;
   },
 
   connectPeer() {
@@ -1113,12 +1119,35 @@ const View = {
     }
   },
 
-  talk(on) {
-    if (!this.micTrack) return;
-    if (this.micTrack.enabled === on) return;
-    this.micTrack.enabled = on;
-    $('#talkBtn').classList.toggle('on', on);
-    $('#talkBtn').textContent = on ? '🔴 말하는 중… 손을 떼면 끝' : '🎙️ 누르고 있는 동안 말하기';
+  async talk(on) {
+    if (!this.silentTrack || on === !!this.talkWant) return;
+    this.talkWant = on;
+    const btn = $('#talkBtn');
+    if (on) {
+      clearTimeout(this.micIdleTimer);
+      btn.classList.add('on'); btn.textContent = '🎙️ 마이크 켜는 중…';
+      if (!this.micTrack || this.micTrack.readyState === 'ended') {
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+          this.micTrack = s.getAudioTracks()[0];
+        } catch {
+          this.talkWant = false;
+          btn.classList.remove('on');
+          btn.textContent = '🎙️ 마이크 권한이 필요합니다 · 허용 후 다시 누르세요';
+          setTimeout(() => { if (!this.talkWant) btn.textContent = '🎙️ 누르고 있는 동안 말하기'; }, 4000);
+          return;
+        }
+      }
+      if (!this.talkWant) { this.micIdleTimer = setTimeout(() => this.releaseMic(), 8000); return; }   // 준비 중에 손을 뗌
+      try { await this.audioSender()?.replaceTrack(this.micTrack); } catch {}
+      btn.textContent = '🔴 말하는 중… 손을 떼면 끝';
+    } else {
+      btn.classList.remove('on'); btn.textContent = '🎙️ 누르고 있는 동안 말하기';
+      try { await this.audioSender()?.replaceTrack(this.silentTrack); } catch {}
+      // 바로 다시 누를 때 지연이 없도록 8초 뒤에 마이크를 놓는다
+      clearTimeout(this.micIdleTimer);
+      this.micIdleTimer = setTimeout(() => this.releaseMic(), 8000);
+    }
     // 하울링 방지: 말하는 동안 카메라 쪽 소리는 잠시 끔
     this.talking = on;
     this.applyListen();
@@ -1210,6 +1239,7 @@ const View = {
     try { this.call?.close(); } catch {} try { this.conn?.close(); } catch {}
     try { this.peer?.destroy(); } catch {}
     this.mic?.getTracks().forEach(t => t.stop());
+    this.talkWant = false; this.talking = false; this.releaseMic();
     try { this.audioCtx?.close(); } catch {}
     this.applyKeepOn();
     $('#viewVideo').srcObject = null;
