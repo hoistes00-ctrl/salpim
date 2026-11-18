@@ -69,7 +69,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .batt{font-size:13px;color:var(--muted);white-space:nowrap}
 
 /* video */
-.stage{position:relative;background:#000;aspect-ratio:16/9;width:100%;overflow:hidden}
+.stage{position:relative;background:#000;aspect-ratio:var(--ar,16/9);max-height:62vh;width:100%;overflow:hidden}
 .stage video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .stage.bright video{filter:brightness(1.9) contrast(1.15) saturate(.9)}
 .stage:fullscreen{aspect-ratio:auto}
@@ -86,7 +86,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .grid.multi{grid-template-columns:1fr 1fr}
 .grid.solo{grid-template-columns:1fr}
 .grid.solo .tile:not(.sel){display:none}
-.tile{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;min-height:0;min-width:0;scroll-margin-top:72px}   /* 화면 위 막대에 가리지 않게 */
+.tile{position:relative;aspect-ratio:var(--ar,16/9);max-height:72vh;justify-self:center;width:100%;background:#000;overflow:hidden;min-height:0;min-width:0;scroll-margin-top:72px}   /* 화면 위 막대에 가리지 않게 */
 .tile video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .grid.bright video{filter:brightness(1.9) contrast(1.15) saturate(.9)}
 .grid.multi:not(.solo) .tile.sel{outline:3px solid var(--accent);outline-offset:-3px}
@@ -105,16 +105,18 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .tover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;background:#000b;font-size:13px;color:#ddd;pointer-events:none;white-space:pre-line}
 .tover.bad{color:#ff9a8f}
 .grid:fullscreen{grid-auto-rows:1fr;align-content:stretch}
-.grid:fullscreen .tile{aspect-ratio:auto}
+.grid:fullscreen .tile{aspect-ratio:auto;max-height:none}
 .addcam{margin:10px 14px 0;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
 input.nameIn{font-size:16px;letter-spacing:0;text-transform:none;padding:10px 12px;margin-top:10px;text-align:center}
 @media (max-width: 599px) and (orientation: portrait) {
-  .grid.n2{grid-template-columns:1fr}   /* 폰 세로 화면에서 2대는 위아래로 */
-  .grid.multi:not(.solo):not(.n2) .tbtn{padding:2px 7px;font-size:12px}
-  .grid.multi:not(.solo):not(.n2) .texp{right:36px}
-  .grid.multi:not(.solo):not(.n2) .tbar{right:66px;left:6px;top:6px}
+  .grid.multi{grid-template-columns:1fr;gap:6px}   /* 폰 세로 화면에서는 카메라를 한 줄에 하나씩 크게 */
+  .grid.multi .tile{max-height:60vh}
 }
 
+/* 감지 영역: 정하는 동안에는 영상을 화면 가득 띄우고 버튼 막대는 아래에 고정 */
+.zfull{position:fixed!important;left:0;right:0;top:0;bottom:var(--zbar,210px);z-index:60;aspect-ratio:auto!important;max-height:none!important;width:auto!important;background:#000;outline:none!important;padding-top:env(safe-area-inset-top)}
+.zonebar.zfix{position:fixed;left:0;right:0;bottom:0;margin:0;border-radius:14px 14px 0 0;z-index:61;padding-bottom:calc(12px + env(safe-area-inset-bottom));max-width:none}
+body.zlock{overflow:hidden}
 /* 감지 영역 */
 .tzone,.zonecv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .tile.editing .tzone{pointer-events:auto;touch-action:none;cursor:crosshair}
@@ -197,7 +199,8 @@ button{-webkit-touch-callout:none}
   .split-main{display:flex;flex-direction:column;min-height:0;background:#000}
   .split-main .stage{flex:1;aspect-ratio:auto;min-height:0}
   .split-main .grid{flex:1;min-height:0;grid-auto-rows:1fr}
-  .split-main .grid .tile{aspect-ratio:auto}
+  .split-main .grid .tile{aspect-ratio:auto;max-height:none}
+  .split-main .stage{max-height:none}
   .split-main .alert{margin:10px}
   .split-side{overflow-y:auto;border-left:1px solid var(--line);overscroll-behavior:contain}
   .split-side .wrap{max-width:none}
@@ -253,7 +256,7 @@ button{-webkit-touch-callout:none}
   </div>
   <div id="camZoneBar" class="zonebar" hidden>
     <div class="small"><b>✏️ 감지 영역 정하기</b><br>
-    <span class="hint">위 화면을 손가락으로 문질러 움직임을 볼 곳을 칠하세요. 칠한 곳을 다시 문지르면 지워집니다. 아무 곳도 칠하지 않으면 화면 전체를 봅니다.</span></div>
+    <span class="hint">문질러서 움직임을 볼 곳을 칠하세요. 칠한 곳을 다시 문지르면 지워지고, 아무 곳도 안 칠하면 화면 전체를 봅니다.</span></div>
     <div class="row" style="margin-top:10px">
       <button id="camZoneAll">전체 칠하기</button><button id="camZoneClear">모두 지우기</button>
       <button class="ghost" id="camZoneCancel">취소</button><button class="primary" id="camZoneSave">저장</button>
@@ -319,7 +322,7 @@ button{-webkit-touch-callout:none}
   <div class="grid" id="stage"></div>
   <div id="zoneBar" class="zonebar" hidden>
     <div class="small"><b>✏️ 감지 영역 정하기<span id="zoneFor"></span></b><br>
-    <span class="hint">화면을 손가락(마우스)으로 문질러 움직임을 볼 곳을 칠하세요. 칠한 곳을 다시 문지르면 지워집니다. 아무 곳도 칠하지 않으면 화면 전체를 봅니다.</span></div>
+    <span class="hint">문질러서 움직임을 볼 곳을 칠하세요. 칠한 곳을 다시 문지르면 지워지고, 아무 곳도 안 칠하면 화면 전체를 봅니다.</span></div>
     <div class="row" style="margin-top:10px">
       <button id="zoneAll">전체 칠하기</button><button id="zoneClear">모두 지우기</button>
       <button class="ghost" id="zoneCancel">취소</button><button class="primary" id="zoneSave">저장</button>
@@ -433,7 +436,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.15-1';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const APP_VER = '2026.11.18-1';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
 const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3, zone: null };
 /* ---------- 감지 영역 ----------
    화면을 가로 16 × 세로 12칸으로 나눠, 칠한 칸에서만 움직임을 본다.
@@ -444,6 +447,13 @@ const zoneHas = (z, cx, cy) => !z || !!(z[cy] & (1 << cx));
 const zoneCount = z => { if (!z) return ZW * ZH; let n = 0; for (const r of z) for (let i = 0; i < ZW; i++) if (r & (1 << i)) n++; return n; };
 const zoneFromMask = m => { const z = []; let n = 0; for (let y = 0; y < ZH; y++) { let r = 0; for (let x = 0; x < ZW; x++) if (m[y * ZW + x]) { r |= 1 << x; n++; } z.push(r); } return n === 0 || n === ZW * ZH ? null : z; };
 const maskFromZone = z => { const m = new Uint8Array(ZW * ZH); if (z) for (let y = 0; y < ZH; y++) for (let x = 0; x < ZW; x++) m[y * ZW + x] = zoneHas(z, x, y) ? 1 : 0; return m; };
+function zoneFullOpen(box, bar) {
+  bar.hidden = false; bar.classList.add('zfix'); box.classList.add('zfull'); document.body.classList.add('zlock');
+  document.documentElement.style.setProperty('--zbar', bar.offsetHeight + 'px');
+}
+function zoneFullClose(box, bar) {
+  bar.hidden = true; bar.classList.remove('zfix'); box.classList.remove('zfull'); document.body.classList.remove('zlock');
+}
 function zoneCellAt(e, box, video) {   // 누른 위치가 몇 번째 칸인지
   const bb = box.getBoundingClientRect(), r = contentRect(video, box);
   const fx = (e.clientX - bb.left - r.x) / r.w, fy = (e.clientY - bb.top - r.y) / r.h;
@@ -720,9 +730,13 @@ const Cam = {
     this.keepAwake();
     this.startDetect();
     this.buildZone();
-    $('#camVideo').addEventListener('loadedmetadata', () => this.drawZone());
-    $('#camVideo').addEventListener('resize', () => this.drawZone());
-    try { new ResizeObserver(() => this.drawZone()).observe($('#camVideo')); } catch {}
+    const fit = () => {   // 카메라 화면 칸 모양을 영상 방향(세로·가로)에 맞춤
+      const v = $('#camVideo'); if (v.videoWidth) $('#camStage').style.setProperty('--ar', v.videoWidth + '/' + v.videoHeight);
+      this.drawZone();
+    };
+    $('#camVideo').addEventListener('loadedmetadata', fit);
+    $('#camVideo').addEventListener('resize', fit);
+    try { new ResizeObserver(() => this.drawZone()).observe($('#camStage')); } catch {}
     try { this.battery = await navigator.getBattery?.(); } catch {}
     this.timers.push(setInterval(() => this.tick(), 1000));
     this.timers.push(setInterval(() => { $('#dimClock').textContent = hhmm(Date.now()); }, 5000));
@@ -1047,15 +1061,15 @@ const Cam = {
   // 카메라 기기 화면에서 직접 영역 정하기
   startZoneEdit() {
     this.zoneEdit = { mask: maskFromZone(zoneValid(this.cfg.zone) ? this.cfg.zone : null), paint: null, last: null };
-    $('#cam').classList.add('zediting'); $('#camZoneBar').hidden = false; $('#dim').hidden = true;
+    $('#cam').classList.add('zediting'); $('#dim').hidden = true;
     clearTimeout(this.dimTimer);   // 칠하는 동안 화면이 어두워지지 않게
-    $('#camStage').scrollIntoView({ block: 'nearest' });
-    this.drawZone();
+    zoneFullOpen($('#camStage'), $('#camZoneBar'));   // 화면 가득 띄워서 칠하기 쉽게
+    requestAnimationFrame(() => this.drawZone());
   },
   endZoneEdit(save) {
     const ze = this.zoneEdit; if (!ze) return;
     this.zoneEdit = null;
-    $('#cam').classList.remove('zediting'); $('#camZoneBar').hidden = true;
+    $('#cam').classList.remove('zediting'); zoneFullClose($('#camStage'), $('#camZoneBar'));
     if (save) {
       this.cfg.zone = zoneFromMask(ze.mask);
       store.set('cfg', this.cfg);
@@ -1230,7 +1244,10 @@ const View = {
     zc.addEventListener('pointerdown', e => this.zonePaint(L, e, true));
     zc.addEventListener('pointermove', e => this.zonePaint(L, e, false));
     for (const ev of ['pointerup', 'pointercancel']) zc.addEventListener(ev, () => { this._paint = null; });
-    for (const ev of ['loadedmetadata', 'resize']) L.video.addEventListener(ev, () => this.drawTileZone(L));
+    for (const ev of ['loadedmetadata', 'resize']) L.video.addEventListener(ev, () => {
+      if (L.video.videoWidth) t.style.setProperty('--ar', L.video.videoWidth + '/' + L.video.videoHeight);   // 세로 영상은 세로로 길게
+      this.drawTileZone(L);
+    });
     try { new ResizeObserver(() => this.drawTileZone(L)).observe(t); } catch {}
     $('#stage').append(t);
     this.links.set(code, L);
@@ -1287,19 +1304,18 @@ const View = {
     const L = this.L; if (!L) return;
     if (this.zoneEdit) this.endZoneEdit();
     this.zoneEdit = { L, mask: maskFromZone(zoneValid(L.cfg.zone) ? L.cfg.zone : null), prevSolo: this.solo };
-    this.solo = true; this.layout();   // 크게 띄워서 칠하기 쉽게
+    this.solo = true; this.layout();
     L.tile.classList.add('editing');
     $('#zoneFor').textContent = this.links.size > 1 ? ' · ' + this.camLabel(L) : '';
-    $('#zoneBar').hidden = false;
-    this.drawTileZone(L);
-    L.tile.scrollIntoView({ block: 'nearest' });   // 칠하는 도중에 화면이 움직이지 않도록 바로 이동
+    zoneFullOpen(L.tile, $('#zoneBar'));   // 화면 가득 띄워서 칠하기 쉽게
+    requestAnimationFrame(() => this.drawTileZone(L));
   },
   endZoneEdit() {
     const ze = this.zoneEdit; if (!ze) return;
     this.zoneEdit = null; this._paint = null;
     ze.L.tile.classList.remove('editing');
+    zoneFullClose(ze.L.tile, $('#zoneBar'));
     this.solo = ze.prevSolo; this.layout();
-    $('#zoneBar').hidden = true;
     this.drawTileZone(ze.L);
   },
   saveZoneEdit() {
