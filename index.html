@@ -257,6 +257,8 @@ button{-webkit-touch-callout:none}
   <div id="camZoneBar" class="zonebar" hidden>
     <div class="small"><b>✏️ 감지 영역 정하기</b><br>
     <span class="hint">문질러서 움직임을 볼 곳을 칠하세요. 칠한 곳을 다시 문지르면 지워지고, 아무 곳도 안 칠하면 화면 전체를 봅니다.</span></div>
+    <div class="row" style="margin-top:8px;align-items:center;flex-wrap:nowrap"><span class="hint" style="flex:none">붓 굵기</span>
+      <div class="seg grow brushseg"><button data-b="0">가늘게</button><button data-b="1">보통</button><button data-b="2">굵게</button></div></div>
     <div class="row" style="margin-top:10px">
       <button id="camZoneAll">전체 칠하기</button><button id="camZoneClear">모두 지우기</button>
       <button class="ghost" id="camZoneCancel">취소</button><button class="primary" id="camZoneSave">저장</button>
@@ -323,6 +325,8 @@ button{-webkit-touch-callout:none}
   <div id="zoneBar" class="zonebar" hidden>
     <div class="small"><b>✏️ 감지 영역 정하기<span id="zoneFor"></span></b><br>
     <span class="hint">문질러서 움직임을 볼 곳을 칠하세요. 칠한 곳을 다시 문지르면 지워지고, 아무 곳도 안 칠하면 화면 전체를 봅니다.</span></div>
+    <div class="row" style="margin-top:8px;align-items:center;flex-wrap:nowrap"><span class="hint" style="flex:none">붓 굵기</span>
+      <div class="seg grow brushseg"><button data-b="0">가늘게</button><button data-b="1">보통</button><button data-b="2">굵게</button></div></div>
     <div class="row" style="margin-top:10px">
       <button id="zoneAll">전체 칠하기</button><button id="zoneClear">모두 지우기</button>
       <button class="ghost" id="zoneCancel">취소</button><button class="primary" id="zoneSave">저장</button>
@@ -436,17 +440,42 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.18-1';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const APP_VER = '2026.11.18-2';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
 const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3, zone: null };
 /* ---------- 감지 영역 ----------
-   화면을 가로 16 × 세로 12칸으로 나눠, 칠한 칸에서만 움직임을 본다.
-   zone = 줄(12개)마다 칸 16개를 비트로 담은 숫자 배열. null이면 화면 전체. */
-const ZW = 16, ZH = 12, DET_W = 80, DET_H = 60;   // 감지용 축소 화면 80×60 → 한 칸이 5×5 점
-const zoneValid = z => Array.isArray(z) && z.length === ZH && z.every(r => Number.isInteger(r) && r >= 0 && r < (1 << ZW));
-const zoneHas = (z, cx, cy) => !z || !!(z[cy] & (1 << cx));
-const zoneCount = z => { if (!z) return ZW * ZH; let n = 0; for (const r of z) for (let i = 0; i < ZW; i++) if (r & (1 << i)) n++; return n; };
-const zoneFromMask = m => { const z = []; let n = 0; for (let y = 0; y < ZH; y++) { let r = 0; for (let x = 0; x < ZW; x++) if (m[y * ZW + x]) { r |= 1 << x; n++; } z.push(r); } return n === 0 || n === ZW * ZH ? null : z; };
-const maskFromZone = z => { const m = new Uint8Array(ZW * ZH); if (z) for (let y = 0; y < ZH; y++) for (let x = 0; x < ZW; x++) m[y * ZW + x] = zoneHas(z, x, y) ? 1 : 0; return m; };
+   영상을 칸으로 나눠, 칠한 칸에서만 움직임을 본다. 긴 쪽이 32칸이고 짧은 쪽은 영상 비율에 맞춘다
+   (세로 영상이면 18×32, 가로 영상이면 32×18 → 칸이 정사각형에 가깝게).
+   zone = { w, h, m }: m은 칸마다 '1'(감지)·'0'을 이은 글자. null이면 화면 전체.
+   예전 형식(16×12, 줄마다 숫자 배열)도 그대로 읽어 들인다. */
+const ZMAX = 32, DET_W = 80, DET_H = 60;   // 감지용 축소 화면 80×60
+function zoneNorm(z) {
+  if (!z) return null;
+  if (Array.isArray(z) && z.length === 12 && z.every(r => Number.isInteger(r) && r >= 0 && r < 65536)) {
+    let m = ''; for (let y = 0; y < 12; y++) for (let x = 0; x < 16; x++) m += (z[y] >> x) & 1 ? '1' : '0';
+    return { w: 16, h: 12, m };
+  }
+  if (Number.isInteger(z.w) && Number.isInteger(z.h) && z.w >= 2 && z.h >= 2 && z.w <= 64 && z.h <= 64
+      && typeof z.m === 'string' && z.m.length === z.w * z.h && /^[01]+$/.test(z.m)) return { w: z.w, h: z.h, m: z.m };
+  return null;
+}
+const zoneValid = z => !!zoneNorm(z);
+const zoneAt = (z, nx, ny) => z.m.charCodeAt(Math.min(z.h - 1, Math.floor(ny * z.h)) * z.w + Math.min(z.w - 1, Math.floor(nx * z.w))) === 49;
+const zoneFrac = z => { z = zoneNorm(z); if (!z) return 0; let n = 0; for (let i = 0; i < z.m.length; i++) if (z.m.charCodeAt(i) === 49) n++; return n / z.m.length; };
+function zoneDims(vw, vh) {   // 영상 비율에 맞춘 칸 수
+  if (!vw || !vh) return [ZMAX, 18];
+  return vw >= vh ? [ZMAX, Math.max(4, Math.round(ZMAX * vh / vw))] : [Math.max(4, Math.round(ZMAX * vw / vh)), ZMAX];
+}
+function zoneMask(z, w, h) {   // 저장된 영역을 w×h 칠하기판으로 옮김 (칸 수가 달라도 위치 그대로)
+  const m = new Uint8Array(w * h); z = zoneNorm(z); if (!z) return m;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) m[y * w + x] = zoneAt(z, (x + 0.5) / w, (y + 0.5) / h) ? 1 : 0;
+  return m;
+}
+function zoneFromMask(mask, w, h) {   // 아무 곳도 안 칠했거나 전부 칠했으면 화면 전체(null)
+  let n = 0, m = '';
+  for (let i = 0; i < w * h; i++) { m += mask[i] ? '1' : '0'; if (mask[i]) n++; }
+  return n === 0 || n === w * h ? null : { w, h, m };
+}
+let ZONE_BRUSH = store.get('zoneBrush', 1);   // 붓 굵기 0: 한 칸, 1: 3×3칸, 2: 5×5칸
 function zoneFullOpen(box, bar) {
   bar.hidden = false; bar.classList.add('zfix'); box.classList.add('zfull'); document.body.classList.add('zlock');
   document.documentElement.style.setProperty('--zbar', bar.offsetHeight + 'px');
@@ -454,18 +483,37 @@ function zoneFullOpen(box, bar) {
 function zoneFullClose(box, bar) {
   bar.hidden = true; bar.classList.remove('zfix'); box.classList.remove('zfull'); document.body.classList.remove('zlock');
 }
-function zoneCellAt(e, box, video) {   // 누른 위치가 몇 번째 칸인지
+function zoneCellAt(e, box, video, w, h) {   // 누른 위치가 몇 번째 칸인지
   const bb = box.getBoundingClientRect(), r = contentRect(video, box);
   const fx = (e.clientX - bb.left - r.x) / r.w, fy = (e.clientY - bb.top - r.y) / r.h;
   return { inside: fx >= 0 && fy >= 0 && fx <= 1 && fy <= 1,
-    cx: Math.max(0, Math.min(ZW - 1, Math.floor(fx * ZW))), cy: Math.max(0, Math.min(ZH - 1, Math.floor(fy * ZH))) };
+    cx: Math.max(0, Math.min(w - 1, Math.floor(fx * w))), cy: Math.max(0, Math.min(h - 1, Math.floor(fy * h))) };
 }
-function zoneLine(mask, from, to, val) {   // 빠르게 문질러도 칸을 건너뛰지 않도록 선으로 이어 칠함
+// 칠하기 공통: ed = { w, h, mask, paint, last }. 붓 굵기만큼 칠하고, 빠르게 문질러도 칸을 건너뛰지 않도록 선으로 이음
+function zonePaintAt(ed, e, start, box, video) {
+  if (!start && ed.paint == null) return false;
+  e.preventDefault();
+  const c = zoneCellAt(e, box, video, ed.w, ed.h);
+  if (start) {
+    if (!c.inside) return false;
+    ed.paint = ed.mask[c.cy * ed.w + c.cx] ? 0 : 1;   // 칠한 칸에서 시작하면 지우기, 아니면 칠하기
+    ed.last = [c.cx, c.cy];
+    try { e.target.setPointerCapture(e.pointerId); } catch {}
+  }
+  zoneLine(ed, ed.last, [c.cx, c.cy]); ed.last = [c.cx, c.cy];
+  return true;
+}
+function zoneLine(ed, from, to) {
+  const r = [0, 1, 2][ZONE_BRUSH] ?? 1;
+  const dab = (x, y) => {
+    for (let yy = Math.max(0, y - r); yy <= Math.min(ed.h - 1, y + r); yy++)
+      for (let xx = Math.max(0, x - r); xx <= Math.min(ed.w - 1, x + r); xx++) ed.mask[yy * ed.w + xx] = ed.paint;
+  };
   let [x0, y0] = from; const [x1, y1] = to;
   const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx + dy;
   for (;;) {
-    mask[y0 * ZW + x0] = val;
+    dab(x0, y0);
     if (x0 === x1 && y0 === y1) break;
     const e2 = 2 * err;
     if (e2 >= dy) { err += dy; x0 += sx; }
@@ -478,12 +526,12 @@ function contentRect(video, box) {   // object-fit: contain 일 때 실제 영�
   return { x: (W - w) / 2, y: (H - h) / 2, w, h };
 }
 // 영역 그리기: 평소에는 감지하지 않는 곳을 살짝 어둡게 + 경계선, 정하는 중에는 칸과 칠한 곳을 보여줌
-function drawZone(canvas, video, has, editing) {
+function drawZone(canvas, video, has, editing, ZW, ZH) {
   const box = canvas.parentElement, W = box.clientWidth, H = box.clientHeight, dpr = window.devicePixelRatio || 1;
   if (!W || !H) return;
   canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   const g = canvas.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-  if (!has && !editing) return;
+  if ((!has && !editing) || !ZW || !ZH) return;
   const r = contentRect(video, box), cw = r.w / ZW, ch = r.h / ZH;
   const on = (x, y) => x >= 0 && y >= 0 && x < ZW && y < ZH && (has ? has(x, y) : false);
   for (let y = 0; y < ZH; y++) for (let x = 0; x < ZW; x++) {
@@ -491,7 +539,7 @@ function drawZone(canvas, video, has, editing) {
     else { g.fillStyle = editing ? 'rgba(0,0,0,.45)' : 'rgba(0,0,0,.3)'; g.fillRect(r.x + x * cw, r.y + y * ch, cw, ch); }
   }
   if (editing) {   // 칸 선
-    g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1; g.beginPath();
+    g.strokeStyle = 'rgba(255,255,255,.13)'; g.lineWidth = 1; g.beginPath();
     for (let x = 0; x <= ZW; x++) { g.moveTo(r.x + x * cw, r.y); g.lineTo(r.x + x * cw, r.y + r.h); }
     for (let y = 0; y <= ZH; y++) { g.moveTo(r.x, r.y + y * ch); g.lineTo(r.x + r.w, r.y + y * ch); }
     g.stroke();
@@ -960,7 +1008,7 @@ const Cam = {
       if (typeof c.motion === 'boolean') n.motion = c.motion;
       if (c.motionSens >= 1 && c.motionSens <= 10) n.motionSens = Math.round(c.motionSens);
       if (GAPS.includes(c.gap)) n.gap = c.gap;
-      if (c.zone === null || zoneValid(c.zone)) n.zone = c.zone;   // 감지 영역
+      if (c.zone === null) n.zone = null; else if (zoneValid(c.zone)) n.zone = zoneNorm(c.zone);   // 감지 영역
       const qChanged = c.quality && c.quality !== this.cfg.quality;
       Object.assign(this.cfg, n);
       if (qChanged) this.setQuality(c.quality);
@@ -1041,26 +1089,27 @@ const Cam = {
 
   // 감지 영역 → 축소 화면(80×60)에서 볼 점 목록. 카메라 화면에도 영역을 그려 보여줌
   buildZone() {
-    const z = zoneValid(this.cfg.zone) ? this.cfg.zone : null;
+    const z = zoneNorm(this.cfg.zone);
     if (!z) this.zoneIdx = null;
     else {
       const idx = [];
       for (let y = 0; y < DET_H; y++) for (let x = 0; x < DET_W; x++)
-        if (zoneHas(z, Math.floor(x * ZW / DET_W), Math.floor(y * ZH / DET_H))) idx.push(y * DET_W + x);
-      this.zoneIdx = Int32Array.from(idx);
+        if (zoneAt(z, (x + 0.5) / DET_W, (y + 0.5) / DET_H)) idx.push(y * DET_W + x);
+      this.zoneIdx = idx.length ? Int32Array.from(idx) : null;
     }
     this.drawZone();
   },
   drawZone() {
-    const ze = this.zoneEdit, z = zoneValid(this.cfg.zone) ? this.cfg.zone : null;
-    if (ze) drawZone($('#camZone'), $('#camVideo'), (x, y) => !!ze.mask[y * ZW + x], true);
-    else drawZone($('#camZone'), $('#camVideo'), z ? (x, y) => zoneHas(z, x, y) : null, false);
-    const n = z ? zoneCount(z) : 0;
-    $('#camZoneInfo').textContent = n ? `· 화면 일부 (${Math.round(n / (ZW * ZH) * 100)}%)` : '· 화면 전체';
+    const ze = this.zoneEdit, z = zoneNorm(this.cfg.zone);
+    if (ze) drawZone($('#camZone'), $('#camVideo'), (x, y) => !!ze.mask[y * ze.w + x], true, ze.w, ze.h);
+    else drawZone($('#camZone'), $('#camVideo'), z ? (x, y) => z.m.charCodeAt(y * z.w + x) === 49 : null, false, z?.w, z?.h);
+    const f = zoneFrac(z);
+    $('#camZoneInfo').textContent = f ? `· 화면 일부 (${Math.max(1, Math.round(f * 100))}%)` : '· 화면 전체';
   },
   // 카메라 기기 화면에서 직접 영역 정하기
   startZoneEdit() {
-    this.zoneEdit = { mask: maskFromZone(zoneValid(this.cfg.zone) ? this.cfg.zone : null), paint: null, last: null };
+    const v = $('#camVideo'), [w, h] = zoneDims(v.videoWidth, v.videoHeight);
+    this.zoneEdit = { w, h, mask: zoneMask(this.cfg.zone, w, h), paint: null, last: null };
     $('#cam').classList.add('zediting'); $('#dim').hidden = true;
     clearTimeout(this.dimTimer);   // 칠하는 동안 화면이 어두워지지 않게
     zoneFullOpen($('#camStage'), $('#camZoneBar'));   // 화면 가득 띄워서 칠하기 쉽게
@@ -1071,7 +1120,7 @@ const Cam = {
     this.zoneEdit = null;
     $('#cam').classList.remove('zediting'); zoneFullClose($('#camStage'), $('#camZoneBar'));
     if (save) {
-      this.cfg.zone = zoneFromMask(ze.mask);
+      this.cfg.zone = zoneFromMask(ze.mask, ze.w, ze.h);
       store.set('cfg', this.cfg);
       this.broadcast({ t: 'cfg', cfg: this.cfg });   // 보는 기기에도 바로 반영
     }
@@ -1079,16 +1128,7 @@ const Cam = {
   },
   zonePaint(e, start) {
     const ze = this.zoneEdit; if (!ze) return;
-    if (!start && ze.paint == null) return;
-    e.preventDefault();
-    const c = zoneCellAt(e, $('#camStage'), $('#camVideo'));
-    if (start) {
-      if (!c.inside) return;
-      ze.paint = ze.mask[c.cy * ZW + c.cx] ? 0 : 1; ze.last = [c.cx, c.cy];
-      try { e.target.setPointerCapture(e.pointerId); } catch {}
-    }
-    zoneLine(ze.mask, ze.last, [c.cx, c.cy], ze.paint); ze.last = [c.cx, c.cy];
-    this.drawZone();
+    if (zonePaintAt(ze, e, start, $('#camStage'), $('#camVideo'))) this.drawZone();
   },
 
   // 감지되면 시각만 기록하고 알린다. 사진은 찍거나 저장하지 않는다.
@@ -1147,6 +1187,10 @@ $('#camStop').onclick = () => { if (confirm('카메라를 끌까요?')) Cam.stop
 $('#camFlip').onclick = () => Cam.flip();
 $('#camMicSw').onchange = e => Cam.setMic(e.target.checked);
 $('#camZoneBtn').onclick = () => Cam.startZoneEdit();
+// 붓 굵기: 칸이 촘촘해서 손가락으로 칠하기 쉽도록 (가늘게 1칸, 보통 3×3칸, 굵게 5×5칸)
+function renderBrush() { for (const b of document.querySelectorAll('.brushseg button')) b.classList.toggle('on', +b.dataset.b === ZONE_BRUSH); }
+for (const b of document.querySelectorAll('.brushseg button')) b.onclick = () => { ZONE_BRUSH = +b.dataset.b; store.set('zoneBrush', ZONE_BRUSH); renderBrush(); };
+renderBrush();
 $('#camZoneSave').onclick = () => Cam.endZoneEdit(true);
 $('#camZoneCancel').onclick = () => Cam.endZoneEdit(false);
 $('#camZoneAll').onclick = () => { if (Cam.zoneEdit) { Cam.zoneEdit.mask.fill(1); Cam.drawZone(); } };
@@ -1243,7 +1287,7 @@ const View = {
     const zc = L.$('.tzone');
     zc.addEventListener('pointerdown', e => this.zonePaint(L, e, true));
     zc.addEventListener('pointermove', e => this.zonePaint(L, e, false));
-    for (const ev of ['pointerup', 'pointercancel']) zc.addEventListener(ev, () => { this._paint = null; });
+    for (const ev of ['pointerup', 'pointercancel']) zc.addEventListener(ev, () => { if (this.zoneEdit) this.zoneEdit.paint = null; });
     for (const ev of ['loadedmetadata', 'resize']) L.video.addEventListener(ev, () => {
       if (L.video.videoWidth) t.style.setProperty('--ar', L.video.videoWidth + '/' + L.video.videoHeight);   // 세로 영상은 세로로 길게
       this.drawTileZone(L);
@@ -1296,14 +1340,16 @@ const View = {
 
   /* ---- 감지 영역 정하기 (선택한 카메라) ---- */
   drawTileZone(L) {
-    const ed = this.zoneEdit?.L === L ? this.zoneEdit.mask : null;
-    const z = zoneValid(L.cfg.zone) ? L.cfg.zone : null;
-    drawZone(L.$('.tzone'), L.video, ed ? (x, y) => !!ed[y * ZW + x] : z ? (x, y) => zoneHas(z, x, y) : null, !!ed);
+    const ed = this.zoneEdit?.L === L ? this.zoneEdit : null;
+    if (ed) { drawZone(L.$('.tzone'), L.video, (x, y) => !!ed.mask[y * ed.w + x], true, ed.w, ed.h); return; }
+    const z = zoneNorm(L.cfg.zone);
+    drawZone(L.$('.tzone'), L.video, z ? (x, y) => z.m.charCodeAt(y * z.w + x) === 49 : null, false, z?.w, z?.h);
   },
   startZoneEdit() {
     const L = this.L; if (!L) return;
     if (this.zoneEdit) this.endZoneEdit();
-    this.zoneEdit = { L, mask: maskFromZone(zoneValid(L.cfg.zone) ? L.cfg.zone : null), prevSolo: this.solo };
+    const [w, h] = zoneDims(L.video.videoWidth, L.video.videoHeight);
+    this.zoneEdit = { L, w, h, mask: zoneMask(L.cfg.zone, w, h), paint: null, last: null, prevSolo: this.solo };
     this.solo = true; this.layout();
     L.tile.classList.add('editing');
     $('#zoneFor').textContent = this.links.size > 1 ? ' · ' + this.camLabel(L) : '';
@@ -1312,7 +1358,7 @@ const View = {
   },
   endZoneEdit() {
     const ze = this.zoneEdit; if (!ze) return;
-    this.zoneEdit = null; this._paint = null;
+    this.zoneEdit = null;
     ze.L.tile.classList.remove('editing');
     zoneFullClose(ze.L.tile, $('#zoneBar'));
     this.solo = ze.prevSolo; this.layout();
@@ -1321,37 +1367,14 @@ const View = {
   saveZoneEdit() {
     const ze = this.zoneEdit; if (!ze) return;
     const L = ze.L;
-    L.cfg.zone = zoneFromMask(ze.mask);   // 아무 곳도 안 칠했거나 전부 칠했으면 화면 전체(null)
+    L.cfg.zone = zoneFromMask(ze.mask, ze.w, ze.h);   // 아무 곳도 안 칠했거나 전부 칠했으면 화면 전체(null)
     if (L.conn?.open) L.conn.send({ t: 'config', cfg: L.cfg });
     this.endZoneEdit();
     if (L === this.L) this.fillSettings();
   },
   zonePaint(L, e, start) {
     const ze = this.zoneEdit; if (!ze || ze.L !== L) return;
-    if (!start && this._paint == null) return;
-    e.preventDefault();
-    const bb = L.tile.getBoundingClientRect(), r = contentRect(L.video, L.tile);
-    const fx = (e.clientX - bb.left - r.x) / r.w, fy = (e.clientY - bb.top - r.y) / r.h;
-    const cx = Math.max(0, Math.min(ZW - 1, Math.floor(fx * ZW))), cy = Math.max(0, Math.min(ZH - 1, Math.floor(fy * ZH)));
-    if (start) {
-      if (fx < 0 || fy < 0 || fx > 1 || fy > 1) return;
-      this._paint = ze.mask[cy * ZW + cx] ? 0 : 1;   // 칠한 칸에서 시작하면 지우기, 아니면 칠하기
-      this._last = [cx, cy];
-      try { e.target.setPointerCapture(e.pointerId); } catch {}
-    }
-    // 빠르게 문질러도 칸을 건너뛰지 않도록 직전 칸부터 선으로 이어 칠함
-    let [x0, y0] = this._last || [cx, cy];
-    const dx = Math.abs(cx - x0), dy = -Math.abs(cy - y0), sx = x0 < cx ? 1 : -1, sy = y0 < cy ? 1 : -1;
-    let err = dx + dy;
-    for (;;) {
-      ze.mask[y0 * ZW + x0] = this._paint;
-      if (x0 === cx && y0 === cy) break;
-      const e2 = 2 * err;
-      if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += sy; }
-    }
-    this._last = [cx, cy];
-    this.drawTileZone(L);
+    if (zonePaintAt(ze, e, start, L.tile, L.video)) this.drawTileZone(L);
   },
 
   openAdd(force) {
@@ -1732,8 +1755,8 @@ const View = {
     const c = this.L?.cfg || DEFAULT_CFG;
     $('#cMotion').checked = c.motion;
     $('#cMotionSens').value = c.motionSens;
-    const zn = zoneValid(c.zone) ? zoneCount(c.zone) : 0;
-    $('#zoneInfo').textContent = zn ? `· 화면 일부 (${Math.round(zn / (ZW * ZH) * 100)}%)` : '· 화면 전체';
+    const zn = zoneFrac(c.zone);
+    $('#zoneInfo').textContent = zn ? `· 화면 일부 (${Math.max(1, Math.round(zn * 100))}%)` : '· 화면 전체';
     $('#zoneBtn').classList.toggle('on', !!zn);
     $('#zoneBtn').lastChild.textContent = zn ? '감지 영역 ✓' : '감지 영역';
     for (const b of document.querySelectorAll('#qSeg button')) b.classList.toggle('on', b.dataset.q === c.quality);
