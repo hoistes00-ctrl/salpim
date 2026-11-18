@@ -191,7 +191,7 @@ button{-webkit-touch-callout:none}
 
 /* 태블릿: 세로는 버튼 한 줄, 가로는 영상 + 옆 패널 */
 @media (min-width: 600px) {
-  .ctrls{grid-template-columns:repeat(7,1fr)}
+  .ctrls{grid-template-columns:repeat(8,1fr)}
 }
 @media (min-width: 840px) and (orientation: landscape) {
   #view:not([hidden]), #cam:not([hidden]){display:flex;flex-direction:column;height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
@@ -282,6 +282,13 @@ button{-webkit-touch-callout:none}
         <button class="ghost small" id="camZoneBtn" style="flex:none;padding:8px 12px">✏️ 영역 정하기</button></div>
     </div>
     <div class="card">
+      <div class="set"><label for="camBeepSw">🔔 감지되면 이 기기에서도 소리<br><span class="hint">반려동물·현관 경보용 · 아기 방에서는 꺼 두세요</span></label><input type="checkbox" class="switch" id="camBeepSw"></div>
+      <div class="hint" style="margin:4px 0 6px">이 기기에서 낼 소리 · 누르면 들려줍니다 (보는 기기의 📢 소리 울리기에도 쓰입니다)</div>
+      <div class="soundgrid" id="camSoundGrid"></div>
+      <div class="slider" style="padding:10px 0 4px"><input type="range" id="camVol" min="1" max="10" step="1"><div class="row"><span class="grow">작게</span><span>크게</span></div></div>
+      <p class="hint" id="camRang" hidden style="margin:4px 0 0;color:var(--accent)">📢 보는 기기에서 소리를 울렸습니다</p>
+    </div>
+    <div class="card">
       <div class="set"><label for="camMicSw">🎙️ 소리 보내기 (마이크)<br><span class="hint" id="camMicHint"></span></label><input type="checkbox" class="switch" id="camMicSw"></div>
     </div>
     <div class="camstats card">
@@ -357,6 +364,7 @@ button{-webkit-touch-callout:none}
     <button id="brightBtn"><span class="ic">🌙</span>밝게 보기</button>
     <button id="fsBtn"><span class="ic">⛶</span>전체 화면</button>
     <button id="pipBtn"><span class="ic">⧉</span>작은 화면</button>
+    <button id="ringBtn"><span class="ic">📢</span>소리 울리기</button>
     <button id="zoneBtn"><span class="ic">🎯</span>감지 영역</button>
     <button id="notiBtn"><span class="ic">🔔</span>알림 켜기</button>
   </div>
@@ -378,6 +386,12 @@ button{-webkit-touch-callout:none}
       <div class="set">
         <label>감지 영역 <span class="hint" id="zoneInfo"></span></label>
         <button class="ghost small" id="zoneEditBtn" style="flex:none;padding:8px 12px">✏️ 영역 정하기</button>
+      </div>
+      <div class="set"><label for="cBeep">🔔 감지되면 카메라 기기에서도 소리<br><span class="hint">반려동물·현관 경보용 · 아기 방에서는 꺼 두세요</span></label><input type="checkbox" class="switch" id="cBeep"></div>
+      <div class="set" style="display:block">
+        <div style="margin-bottom:6px">카메라 기기에서 낼 소리 <span class="hint">📢 소리 울리기에도 쓰입니다 · 누르면 이 기기에서 미리 들려줍니다</span></div>
+        <div class="soundgrid" id="ringGrid"></div>
+        <div class="slider" style="padding:10px 0 0"><input type="range" id="ringVol" min="1" max="10" step="1"><div class="row"><span class="grow">작게</span><span>크게</span></div></div>
       </div>
       <div class="set" style="display:block">
         <div style="margin-bottom:6px">다시 알림 간격 <span class="hint">계속 움직이면 이 간격으로 반복</span></div>
@@ -440,8 +454,8 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('salpim.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('salpim.' + k, JSON.stringify(v)); } catch {} },
 };
-const APP_VER = '2026.11.18-2';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
-const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3, zone: null };
+const APP_VER = '2026.11.18-3';   // 화면 아래에 표시 · 기기끼리 버전이 다르면 경고
+const DEFAULT_CFG = { motion: true, motionSens: 5, quality: 'mid', gap: 3, zone: null, beep: false, beepSound: 'chime', beepVol: 7 };
 /* ---------- 감지 영역 ----------
    영상을 칸으로 나눠, 칠한 칸에서만 움직임을 본다. 긴 쪽이 32칸이고 짧은 쪽은 영상 비율에 맞춘다
    (세로 영상이면 18×32, 가로 영상이면 32×18 → 칸이 정사각형에 가깝게).
@@ -760,6 +774,7 @@ const Cam = {
     $('#camCode').textContent = this.code;
     setStatus($('#camDot'), $('#camStatus'), 'wait', '카메라 켜는 중…');
     this.running = true;
+    try { this.ac = this.ac || new AudioContext(); } catch {}   // 이 기기에서 소리 내기용 (누른 순간에 만들어야 재생이 허용됨)
     $('#cam').classList.remove('failed'); $('#camErrBox').hidden = true;
     try { await this.openStream(); }
     catch (e) {
@@ -828,7 +843,7 @@ const Cam = {
   silentTrack() {
     if (!this._silent || this._silent.readyState === 'ended') {
       try {
-        this._silentCtx = this._silentCtx || new AudioContext();
+        this._silentCtx = this._silentCtx || this.ac || new AudioContext();
         this._silent = this._silentCtx.createMediaStreamDestination().stream.getAudioTracks()[0];
       } catch { return null; }
     }
@@ -1009,13 +1024,23 @@ const Cam = {
       if (c.motionSens >= 1 && c.motionSens <= 10) n.motionSens = Math.round(c.motionSens);
       if (GAPS.includes(c.gap)) n.gap = c.gap;
       if (c.zone === null) n.zone = null; else if (zoneValid(c.zone)) n.zone = zoneNorm(c.zone);   // 감지 영역
+      if (typeof c.beep === 'boolean') n.beep = c.beep;                                             // 감지되면 이 기기에서도 소리
+      if (SOUNDS[c.beepSound]) n.beepSound = c.beepSound;
+      if (c.beepVol >= 1 && c.beepVol <= 10) n.beepVol = Math.round(c.beepVol);
       const qChanged = c.quality && c.quality !== this.cfg.quality;
       Object.assign(this.cfg, n);
       if (qChanged) this.setQuality(c.quality);
       if ('zone' in n) this.buildZone();
       store.set('cfg', this.cfg);
       this.broadcast({ t: 'cfg', cfg: this.cfg });
+      this.renderBeep();
     } else if (d.t === 'flip') this.flip();
+    else if (d.t === 'ring') {   // 보는 기기에서 '소리 울리기'
+      this.playBeep();
+      const n = $('#camRang'); n.hidden = false;
+      clearTimeout(this.rangTimer); this.rangTimer = setTimeout(() => { n.hidden = true; }, 4000);
+      try { conn.send({ t: 'rang' }); } catch {}
+    }
     else if (d.t === 'talk') {
       const v = this.viewers.get(conn.peer); if (v) v.talking = !!d.on;
       this.updateTalk();
@@ -1131,6 +1156,15 @@ const Cam = {
     if (zonePaintAt(ze, e, start, $('#camStage'), $('#camVideo'))) this.drawZone();
   },
 
+  /* ---- 이 기기(카메라)에서 소리 내기 ---- */
+  playBeep() { playSound(this.ac, SOUNDS[this.cfg.beepSound] ? this.cfg.beepSound : 'chime', this.cfg.beepVol || 7); },
+  saveCfg() { store.set('cfg', this.cfg); this.broadcast({ t: 'cfg', cfg: this.cfg }); },
+  renderBeep() {
+    $('#camBeepSw').checked = !!this.cfg.beep;
+    for (const b of document.querySelectorAll('#camSoundGrid button')) b.classList.toggle('on', b.dataset.s === (this.cfg.beepSound || 'chime'));
+    $('#camVol').value = this.cfg.beepVol || 7;
+  },
+
   // 감지되면 시각만 기록하고 알린다. 사진은 찍거나 저장하지 않는다.
   fire(kind) {
     const now = Date.now();
@@ -1142,6 +1176,7 @@ const Cam = {
     store.set('camEvents', this.events);
     renderEvents($('#camEvents'), this.events.slice(0, 5));
     this.broadcast({ t: 'event', ev });
+    if (this.cfg.beep) this.playBeep();   // 감지되면 이 기기에서도 소리 (켜 둔 경우)
   },
 
   tick() {
@@ -1187,6 +1222,16 @@ $('#camStop').onclick = () => { if (confirm('카메라를 끌까요?')) Cam.stop
 $('#camFlip').onclick = () => Cam.flip();
 $('#camMicSw').onchange = e => Cam.setMic(e.target.checked);
 $('#camZoneBtn').onclick = () => Cam.startZoneEdit();
+// 카메라 기기에서 소리: 켜기/끄기, 소리 고르기(누르면 미리 듣기), 크기
+for (const [k, snd] of Object.entries(SOUNDS)) {
+  const b = document.createElement('button'); b.dataset.s = k; b.textContent = snd.label;
+  b.onclick = () => { Cam.cfg.beepSound = k; Cam.saveCfg(); Cam.renderBeep(); Cam.ac?.resume?.(); Cam.playBeep(); };
+  $('#camSoundGrid').append(b);
+}
+$('#camBeepSw').onchange = e => { Cam.cfg.beep = e.target.checked; Cam.saveCfg(); };
+$('#camVol').oninput = e => { Cam.cfg.beepVol = +e.target.value; };
+$('#camVol').onchange = () => { Cam.saveCfg(); Cam.ac?.resume?.(); Cam.playBeep(); };
+Cam.renderBeep();
 // 붓 굵기: 칸이 촘촘해서 손가락으로 칠하기 쉽도록 (가늘게 1칸, 보통 3×3칸, 굵게 5×5칸)
 function renderBrush() { for (const b of document.querySelectorAll('.brushseg button')) b.classList.toggle('on', +b.dataset.b === ZONE_BRUSH); }
 for (const b of document.querySelectorAll('.brushseg button')) b.onclick = () => { ZONE_BRUSH = +b.dataset.b; store.set('zoneBrush', ZONE_BRUSH); renderBrush(); };
@@ -1205,6 +1250,7 @@ $('#camNameIn').oninput = e => {
 };
 $('#dimBtn').onclick = () => { $('#dim').hidden = false; };
 $('#dim').onclick = () => { $('#dim').hidden = true; Cam.armAutoDim(); };
+$('#cam').addEventListener('pointerdown', () => { if (Cam.ac?.state === 'suspended') Cam.ac.resume().catch(() => {}); }, { passive: true });
 for (const ev of ['pointerdown', 'scroll']) $('#cam').addEventListener(ev, () => Cam.running && Cam.armAutoDim(), { passive: true });
 $('#shareLink').onclick = async () => {
   const url = location.origin + location.pathname + location.search + '#v=' + Cam.code;
@@ -1335,7 +1381,7 @@ const View = {
     const L = this.L;
     if (L?.video.srcObject) this.watchHowl(L.video.srcObject); else clearInterval(this.howlTimer);
     $('#selName').textContent = L ? this.camLabel(L) : '';
-    this.applyListen(); this.fillSettings(); this.renderHints(); this.renderTalkBtn(); this.layout();
+    this.applyListen(); this.fillSettings(); this.renderHints(); this.renderTalkBtn(); this.layout(); this.ringState();
   },
 
   /* ---- 감지 영역 정하기 (선택한 카메라) ---- */
@@ -1593,6 +1639,8 @@ const View = {
       L.events.unshift({ kind: 'motion', ts: d.ev.ts }); L.events = L.events.slice(0, 30);
       this.markSeen(L); this.renderAllEvents();
       this.alert(L, d.ev);
+    } else if (d.t === 'rang') {   // 카메라 기기에서 소리를 울렸다는 답
+      if (isSel) { clearTimeout(this.ringTimer); this.ringState('울림 ✓', true); this.ringTimer = setTimeout(() => this.ringState(), 2000); }
     } else if (d.t === 'away') {   // 카메라 기기가 앱 화면을 벗어남 → 카메라가 멈춤
       L.away = !!d.on; this.renderTile(L);
       if (isSel) this.renderHints();
@@ -1601,6 +1649,21 @@ const View = {
         this.notify(`살핌 · ${this.camLabel(L)} 카메라가 멈췄습니다`, '카메라 기기에서 다른 화면으로 넘어갔습니다. 카메라 기기에서 앱으로 돌아가 주세요.', 'salpim-away-' + L.code, L.cfg.gap);
       }
     }
+  },
+
+  // 📢 선택한 카메라 기기에서 소리 울리기
+  ring() {
+    const L = this.L;
+    if (!L?.conn?.open) { this.ringState('연결 안 됨'); setTimeout(() => this.ringState(), 2000); return; }
+    L.conn.send({ t: 'ring' });
+    this.ringState('울리는 중…');
+    clearTimeout(this.ringTimer);
+    this.ringTimer = setTimeout(() => { this.ringState('응답 없음'); setTimeout(() => this.ringState(), 2000); }, 3000);   // 예전 버전 카메라 등
+  },
+  ringState(text, on) {
+    const b = $('#ringBtn');
+    b.lastChild.textContent = text || (this.links.size > 1 && this.L ? this.camLabel(this.L) + ' 울리기' : '소리 울리기');
+    b.classList.toggle('on', !!on);
   },
 
   markSeen(L) {
@@ -1731,6 +1794,14 @@ const View = {
     };
     const cfg = () => this.L?.cfg;
     $('#cMotion').onchange = e => { if (cfg()) { cfg().motion = e.target.checked; send(); } };
+    $('#cBeep').onchange = e => { if (cfg()) { cfg().beep = e.target.checked; send(); } };
+    for (const [k, snd] of Object.entries(SOUNDS)) {
+      const b = document.createElement('button'); b.dataset.s = k; b.textContent = snd.label;
+      b.onclick = () => { if (!cfg()) return; cfg().beepSound = k; this.fillSettings(); send(); playSound(this.audioCtx, k, cfg().beepVol || 7); };
+      $('#ringGrid').append(b);
+    }
+    $('#ringVol').oninput = e => { if (cfg()) { cfg().beepVol = +e.target.value; send(); } };
+    $('#ringVol').onchange = () => { if (cfg()) playSound(this.audioCtx, cfg().beepSound || 'chime', cfg().beepVol || 7); };
     $('#cMotionSens').oninput = e => { if (cfg()) { cfg().motionSens = +e.target.value; send(); } };
     for (const b of document.querySelectorAll('#qSeg button')) b.onclick = () => { if (cfg()) { cfg().quality = b.dataset.q; this.fillSettings(); send(); } };
     for (const b of document.querySelectorAll('#gapSeg button')) b.onclick = () => { if (cfg()) { cfg().gap = +b.dataset.g; this.fillSettings(); send(); } };
@@ -1755,6 +1826,9 @@ const View = {
     const c = this.L?.cfg || DEFAULT_CFG;
     $('#cMotion').checked = c.motion;
     $('#cMotionSens').value = c.motionSens;
+    $('#cBeep').checked = !!c.beep;
+    for (const b of document.querySelectorAll('#ringGrid button')) b.classList.toggle('on', b.dataset.s === (c.beepSound || 'chime'));
+    $('#ringVol').value = c.beepVol || 7;
     const zn = zoneFrac(c.zone);
     $('#zoneInfo').textContent = zn ? `· 화면 일부 (${Math.max(1, Math.round(zn * 100))}%)` : '· 화면 전체';
     $('#zoneBtn').classList.toggle('on', !!zn);
@@ -1942,6 +2016,7 @@ const View = {
 $('#viewStop').onclick = () => View.stop();
 $('#addCamBtn').onclick = () => View.openAdd();
 $('#zoneEditBtn').onclick = () => View.startZoneEdit();
+$('#ringBtn').onclick = () => View.ring();
 $('#zoneBtn').onclick = () => View.startZoneEdit();
 $('#zoneSave').onclick = () => View.saveZoneEdit();
 $('#zoneCancel').onclick = () => View.endZoneEdit();
